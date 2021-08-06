@@ -231,6 +231,140 @@ pub extern "C" fn bagua_net_c_accept(
     return 0;
 }
 
+#[repr(C)]
+pub struct Buffer {
+    data: *mut u8,
+    len: usize,
+}
+
+extern "C" fn free_buf(buf: Buffer) {
+    let s = unsafe { std::slice::from_raw_parts_mut(buf.data, buf.len) };
+    let s = s.as_mut_ptr();
+    unsafe {
+        Box::from_raw(s);
+    }
+}
+
+/// Error code
+/// 0: success
+/// -1: null pointer
+#[no_mangle]
+pub extern "C" fn bagua_net_c_isend(
+    ptr: *mut BaguaNetC,
+    send_comm_id: usize,
+    buf: Buffer,
+    request_id: *mut usize,
+) -> i32 {
+    // First, we **must** check to see if the pointer is null.
+    if ptr.is_null() {
+        // Do nothing.
+        return -1;
+    }
+
+    unsafe {
+        let data: &'static mut [u8] = std::slice::from_raw_parts_mut(buf.data, buf.len);
+        *request_id = (*ptr)
+            .inner
+            .lock()
+            .unwrap()
+            .isend(send_comm_id, data)
+            .unwrap();
+    }
+    return 0;
+}
+
+/// Error code
+/// 0: success
+/// -1: null pointer
+#[no_mangle]
+pub extern "C" fn bagua_net_c_irecv(
+    ptr: *mut BaguaNetC,
+    recv_comm_id: usize,
+    buf: Buffer,
+    request_id: *mut usize,
+) -> i32 {
+    // First, we **must** check to see if the pointer is null.
+    if ptr.is_null() {
+        // Do nothing.
+        return -1;
+    }
+
+    unsafe {
+        let data: &'static mut [u8] = std::slice::from_raw_parts_mut(buf.data, buf.len);
+        *request_id = (*ptr)
+            .inner
+            .lock()
+            .unwrap()
+            .irecv(recv_comm_id, data)
+            .unwrap();
+    }
+    return 0;
+}
+
+/// Error code
+/// 0: success
+/// -1: null pointer
+#[no_mangle]
+pub extern "C" fn bagua_net_c_test(
+    ptr: *mut BaguaNetC,
+    request_id: usize,
+    done: *mut bool,
+    bytes: *mut usize,
+) -> i32 {
+    // First, we **must** check to see if the pointer is null.
+    if ptr.is_null() {
+        // Do nothing.
+        return -1;
+    }
+
+    unsafe {
+        let (let_done, let_bytes) = (*ptr).inner.lock().unwrap().test(request_id).unwrap();
+        *done = let_done;
+        *bytes = let_bytes;
+    }
+    return 0;
+}
+
+/// Error code
+/// 0: success
+/// -1: null pointer
+#[no_mangle]
+pub extern "C" fn bagua_net_c_close_send(
+    ptr: *mut BaguaNetC,
+    send_comm_id: usize,
+) -> i32 {
+    // First, we **must** check to see if the pointer is null.
+    if ptr.is_null() {
+        // Do nothing.
+        return -1;
+    }
+
+    unsafe {
+        (*ptr).inner.lock().unwrap().close_send(send_comm_id).unwrap();
+    }
+    return 0;
+}
+
+/// Error code
+/// 0: success
+/// -1: null pointer
+#[no_mangle]
+pub extern "C" fn bagua_net_c_close_recv(
+    ptr: *mut BaguaNetC,
+    recv_comm_id: usize,
+) -> i32 {
+    // First, we **must** check to see if the pointer is null.
+    if ptr.is_null() {
+        // Do nothing.
+        return -1;
+    }
+
+    unsafe {
+        (*ptr).inner.lock().unwrap().close_recv(recv_comm_id).unwrap();
+    }
+    return 0;
+}
+
 /// Error code
 /// 0: success
 /// -1: null pointer

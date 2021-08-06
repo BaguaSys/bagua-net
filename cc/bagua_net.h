@@ -18,7 +18,12 @@ struct NCCLNetPropertiesC {
 };
 
 struct SocketHandleC {
-  sockaddr sockaddr;
+  struct sockaddr sockaddr;
+};
+
+struct Buffer {
+  uint8_t *data;
+  uintptr_t len;
 };
 
 extern "C" {
@@ -57,6 +62,37 @@ int32_t bagua_net_c_connect(BaguaNetC *ptr,
 /// 0: success
 /// -1: null pointer
 int32_t bagua_net_c_accept(BaguaNetC *ptr, uintptr_t listen_comm_id, uintptr_t *recv_comm_id);
+
+/// Error code
+/// 0: success
+/// -1: null pointer
+int32_t bagua_net_c_isend(BaguaNetC *ptr,
+                          uintptr_t send_comm_id,
+                          Buffer buf,
+                          uintptr_t *request_id);
+
+/// Error code
+/// 0: success
+/// -1: null pointer
+int32_t bagua_net_c_irecv(BaguaNetC *ptr,
+                          uintptr_t recv_comm_id,
+                          Buffer buf,
+                          uintptr_t *request_id);
+
+/// Error code
+/// 0: success
+/// -1: null pointer
+int32_t bagua_net_c_test(BaguaNetC *ptr, uintptr_t request_id, bool *done, uintptr_t *bytes);
+
+/// Error code
+/// 0: success
+/// -1: null pointer
+int32_t bagua_net_c_close_send(BaguaNetC *ptr, uintptr_t send_comm_id);
+
+/// Error code
+/// 0: success
+/// -1: null pointer
+int32_t bagua_net_c_close_recv(BaguaNetC *ptr, uintptr_t recv_comm_id);
 
 /// Error code
 /// 0: success
