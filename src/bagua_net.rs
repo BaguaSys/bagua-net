@@ -148,7 +148,7 @@ impl BaguaNet {
             }),
             recv_worker: std::thread::spawn(move || {
                 for (tcp_stream, recv_nbytes, mut data) in recv_receiver.iter() {
-                    // TODO: fix this deadlock. tcp_stream must be nonblock, otherwise it may deadlock
+                    // NOTE: tcp_stream must be nonblock, otherwise it may deadlock
                     let mut target_nbytes = data.len().to_be_bytes();
                     (*tcp_stream.lock().unwrap()).set_nonblocking(false);
                     // (*tcp_stream.lock().unwrap())
@@ -362,7 +362,6 @@ impl BaguaNet {
         send_comm_id: SocketSendCommID,
         data: &'static [u8],
     ) -> Result<SocketRequestID, BaguaNetError> {
-        // TODO: make isend true async
         let send_comm = self.send_comm_map.get(&send_comm_id).unwrap();
         // let mut send_stream = send_comm.tcp_stream.lock().unwrap();
 
@@ -442,7 +441,6 @@ impl BaguaNet {
         // );
 
         self.socket_request_next_id += 1;
-        // TODO: make async read
         // (*recv_stream).read_exact(&mut data[..]).unwrap();
         let task_status = Arc::new(Mutex::new((false, 0)));
         self.socket_request_map.insert(
