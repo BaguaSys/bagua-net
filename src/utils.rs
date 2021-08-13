@@ -34,7 +34,7 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
         .unwrap_or(-1);
     let NCCL_SOCKET_IFNAME = std::env::var("NCCL_SOCKET_IFNAME")
         .unwrap_or("^docker,lo".to_string());
-    // TODO: support parse sockaddr from NCCL_COMM_ID
+    // TODO @shjwudp: support parse sockaddr from NCCL_COMM_ID
 
     let mut search_not = Vec::<&str>::new();
     let mut search_exact = Vec::<&str>::new();

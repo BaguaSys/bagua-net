@@ -1,8 +1,9 @@
 [package]
 name = "bagua-net"
 version = "0.1.0"
-authors = ["shjwudp"]
+authors = ["Jianbin Chang <shjwudp@gmail.com>"]
 edition = "2018"
+license = "MIT License Copyright (c) 2021 Kuaishou AI Platform & DS3 Lab"
 
 [lib]
 crate-type = ["cdylib"]

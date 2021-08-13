@@ -1,9 +1,3 @@
-/*************************************************************************
- * Copyright (c) 2015-2019, NVIDIA CORPORATION. All rights reserved.
- *
- * See LICENSE.txt for license information
- ************************************************************************/
-
 #include <nccl.h>
 #include <nccl_net.h>
 #include <netinet/in.h>
@@ -22,6 +16,7 @@
 #define __hidden __attribute__((visibility("hidden")))
 
 ncclDebugLogger_t NCCL_DEBUG_LOG;
+#define NCCL_TRACE(FLAGS, ...) NCCL_DEBUG_LOG(NCCL_LOG_TRACE, (FLAGS), __func__, __LINE__, __VA_ARGS__)
 #define NCCL_INFO(FLAGS, ...) NCCL_DEBUG_LOG(NCCL_LOG_INFO, (FLAGS), __func__, __LINE__, __VA_ARGS__)
 #define NCCL_WARN(...) NCCL_DEBUG_LOG(NCCL_LOG_WARN, NCCL_ALL, __FILE__, __LINE__, __VA_ARGS__)
 
@@ -288,7 +283,7 @@ __hidden ncclResult_t baguaNetRegMr(void *comm, void *data, int size, int type, 
 
 __hidden ncclResult_t baguaNetDeregMr(void *comm, void *mhandle)
 {
-    NCCL_INFO(NCCL_ALL, "baguaNetDeregMr, comm=%p", comm);
+    NCCL_TRACE(NCCL_ALL, "baguaNetDeregMr, comm=%p", comm);
     return ncclSuccess;
 }
 
@@ -300,7 +295,7 @@ __hidden ncclResult_t baguaNetIsend(void *sendComm, void *data, int size, void *
         NCCL_WARN("baguaNetIsend failed, ret=%d, sendComm=%p, data=%p, size=%d", ret, sendComm, data, size);
         return ncclInternalError;
     }
-    NCCL_INFO(NCCL_ALL, "baguaNetIsend, sendComm=%p, data=%p, size=%d, request_id=%d",
+    NCCL_TRACE(NCCL_ALL, "baguaNetIsend, sendComm=%p, data=%p, size=%d, request_id=%d",
               sendComm, data, size, *(uintptr_t *)(*request));
 
     return ncclSuccess;
@@ -314,7 +309,7 @@ __hidden ncclResult_t baguaNetIrecv(void *recvComm, void *data, int size, void *
         NCCL_WARN("baguaNetIrecv failed, ret=%d, sendComm=%p, data=%p, size=%d", ret, recvComm, data, size);
         return ncclInternalError;
     }
-    NCCL_INFO(NCCL_ALL, "baguaNetIrecv, recvComm=%p, data=%p, size=%d, request_id=%d",
+    NCCL_TRACE(NCCL_ALL, "baguaNetIrecv, recvComm=%p, data=%p, size=%d, request_id=%d",
               recvComm, data, size, *(uintptr_t *)(*request));
 
     return ncclSuccess;
@@ -341,9 +336,9 @@ __hidden ncclResult_t baguaNetTest(void *request, int *done, int *size)
     if (b_done && size != NULL)
     {
         *size = nbytes;
-        NCCL_INFO(NCCL_ALL, "size=%d", *size);
+        NCCL_TRACE(NCCL_ALL, "size=%d", *size);
     }
-    NCCL_INFO(NCCL_ALL, "baguaNetTest, request_id=%d, done=%d, nbytes=%d",
+    NCCL_TRACE(NCCL_ALL, "baguaNetTest, request_id=%d, done=%d, nbytes=%d",
               *static_cast<uintptr_t *>(request), *done, nbytes);
 
     return ncclSuccess;
@@ -357,7 +352,7 @@ __hidden ncclResult_t baguaNetCloseSend(void *sendComm)
         NCCL_WARN("baguaNetCloseSend failed, ret=%d, sendComm=%p", ret, sendComm);
         return ncclInternalError;
     }
-    NCCL_INFO(NCCL_ALL, "baguaNetCloseSend, sendComm=%p", sendComm);
+    NCCL_TRACE(NCCL_ALL, "baguaNetCloseSend, sendComm=%p", sendComm);
     return ncclSuccess;
 }
 
@@ -369,7 +364,7 @@ __hidden ncclResult_t baguaNetCloseRecv(void *recvComm)
         NCCL_WARN("baguaNetCloseRecv failed, ret=%d, recvComm=%p", ret, recvComm);
         return ncclInternalError;
     }
-    NCCL_INFO(NCCL_ALL, "baguaNetCloseRecv, recvComm=%p", recvComm);
+    NCCL_TRACE(NCCL_ALL, "baguaNetCloseRecv, recvComm=%p", recvComm);
     return ncclSuccess;
 }
 
@@ -381,7 +376,7 @@ __hidden ncclResult_t baguaNetCloseListen(void *listenComm)
         NCCL_WARN("baguaNetCloseListen failed, ret=%d, listenComm=%p", ret, listenComm);
         return ncclInternalError;
     }
-    NCCL_INFO(NCCL_ALL, "baguaNetCloseListen, listenComm=%p", listenComm);
+    NCCL_TRACE(NCCL_ALL, "baguaNetCloseListen, listenComm=%p", listenComm);
     return ncclSuccess;
 }
 
