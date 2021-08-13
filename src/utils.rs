@@ -48,7 +48,6 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
 
     let mut socket_devs = Vec::<NCCLSocketDev>::new();
     const MAX_IF_NAME_SIZE: usize = 16;
-    // TODO: support user specified interfaces
     let addrs = nix::ifaddrs::getifaddrs().unwrap();
     for ifaddr in addrs {
         match ifaddr.address {
