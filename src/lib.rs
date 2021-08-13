@@ -99,29 +99,7 @@ pub extern "C" fn bagua_net_c_get_properties(
             .unwrap()
             .get_properties(dev_id as usize)
             .unwrap();
-
-        println!("dev_id={}, props_raw={:?}", dev_id, props_raw);
-
-        // *props = NCCLNetPropertiesC::c_repr_of(props_raw).unwrap();
-        // FIXME: There is a memory leak
-        let prop_c = NCCLNetPropertiesC::c_repr_of(props_raw);
-        println!("prop_c={:?}, *props={:?}", prop_c, *props);
-        *props = prop_c.unwrap();
-        // *props = *Box::into_raw(Box::new(prop_c));
-        // (*props).name = *Box::into_raw(Box::new((*props).name));
-        // (*props).pci_path = *Box::into_raw(Box::new((*props).pci_path));
-        // *props = *Box::into_raw(Box::new(NCCLNetPropertiesC {
-        //     name: std::ptr::null(),
-        //     pci_path: std::ptr::null(),
-        //     guid: 0,
-        //     ptr_support: 1,
-        //     speed: 1000,
-        //     port: 0,
-        //     max_comms: 666,
-        // }));
-        // (*props).name = std::ptr::mut_null();
-        // (*props).pci_path = *Box::into_raw(Box::new((*props).pci_path));
-        println!("dev_id={}, props={:?}", dev_id, *props);
+        *props = NCCLNetPropertiesC::c_repr_of(props_raw).unwrap();
     }
     return 0;
 }
@@ -139,6 +117,8 @@ pub struct SocketListenCommC {
 /// Error code
 /// 0: success
 /// -1: null pointer
+/// -2: invalid parameter
+/// -3: listen failed
 #[no_mangle]
 pub extern "C" fn bagua_net_c_listen(
     ptr: *mut BaguaNetC,
@@ -156,12 +136,10 @@ pub extern "C" fn bagua_net_c_listen(
     }
 
     unsafe {
-        let (handle, id) = (*ptr)
-            .inner
-            .lock()
-            .unwrap()
-            .listen(dev_id as usize)
-            .unwrap();
+        let (handle, id) = match (*ptr).inner.lock().unwrap().listen(dev_id as usize) {
+            Ok(result) => result,
+            Err(err) => return -3,
+        };
         let (sockaddr, _) = handle.addr.as_ffi_pair();
         (*socket_handle).sockaddr = *sockaddr;
         *socket_listen_comm_id = id as usize;
@@ -172,6 +150,8 @@ pub extern "C" fn bagua_net_c_listen(
 /// Error code
 /// 0: success
 /// -1: null pointer
+/// -2: invalid parameter
+/// -3: connect failed
 #[no_mangle]
 pub extern "C" fn bagua_net_c_connect(
     ptr: *mut BaguaNetC,
@@ -195,17 +175,16 @@ pub extern "C" fn bagua_net_c_connect(
             sa_data: sockaddr.sa_data,
             // sa_len: 0,
         };
-        *socket_send_comm_id = (*ptr)
-            .inner
-            .lock()
-            .unwrap()
-            .connect(
-                dev_id as usize,
-                SocketHandle {
-                    addr: utils::from_libc_sockaddr(&sockaddr).unwrap(),
-                },
-            )
-            .unwrap();
+
+        *socket_send_comm_id = match (*ptr).inner.lock().unwrap().connect(
+            dev_id as usize,
+            SocketHandle {
+                addr: utils::from_libc_sockaddr(&sockaddr).unwrap(),
+            },
+        ) {
+            Ok(id) => id,
+            Err(err) => return -3,
+        }
     }
     return 0;
 }
@@ -304,6 +283,7 @@ pub extern "C" fn bagua_net_c_irecv(
 /// Error code
 /// 0: success
 /// -1: null pointer
+/// -2: invalid parameter
 #[no_mangle]
 pub extern "C" fn bagua_net_c_test(
     ptr: *mut BaguaNetC,
@@ -316,11 +296,16 @@ pub extern "C" fn bagua_net_c_test(
         // Do nothing.
         return -1;
     }
+    if done.is_null() {
+        return -2;
+    }
 
     unsafe {
         let (let_done, let_bytes) = (*ptr).inner.lock().unwrap().test(request_id).unwrap();
         *done = let_done;
-        *bytes = let_bytes;
+        if let_done && !bytes.is_null() {
+            *bytes = let_bytes;
+        }
     }
     return 0;
 }
@@ -329,10 +314,7 @@ pub extern "C" fn bagua_net_c_test(
 /// 0: success
 /// -1: null pointer
 #[no_mangle]
-pub extern "C" fn bagua_net_c_close_send(
-    ptr: *mut BaguaNetC,
-    send_comm_id: usize,
-) -> i32 {
+pub extern "C" fn bagua_net_c_close_send(ptr: *mut BaguaNetC, send_comm_id: usize) -> i32 {
     // First, we **must** check to see if the pointer is null.
     if ptr.is_null() {
         // Do nothing.
@@ -340,7 +322,12 @@ pub extern "C" fn bagua_net_c_close_send(
     }
 
     unsafe {
-        (*ptr).inner.lock().unwrap().close_send(send_comm_id).unwrap();
+        (*ptr)
+            .inner
+            .lock()
+            .unwrap()
+            .close_send(send_comm_id)
+            .unwrap();
     }
     return 0;
 }
@@ -349,10 +336,7 @@ pub extern "C" fn bagua_net_c_close_send(
 /// 0: success
 /// -1: null pointer
 #[no_mangle]
-pub extern "C" fn bagua_net_c_close_recv(
-    ptr: *mut BaguaNetC,
-    recv_comm_id: usize,
-) -> i32 {
+pub extern "C" fn bagua_net_c_close_recv(ptr: *mut BaguaNetC, recv_comm_id: usize) -> i32 {
     // First, we **must** check to see if the pointer is null.
     if ptr.is_null() {
         // Do nothing.
@@ -360,7 +344,12 @@ pub extern "C" fn bagua_net_c_close_recv(
     }
 
     unsafe {
-        (*ptr).inner.lock().unwrap().close_recv(recv_comm_id).unwrap();
+        (*ptr)
+            .inner
+            .lock()
+            .unwrap()
+            .close_recv(recv_comm_id)
+            .unwrap();
     }
     return 0;
 }

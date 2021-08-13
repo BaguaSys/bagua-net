@@ -1,5 +1,5 @@
 use nix::net::if_::InterfaceFlags;
-use nix::sys::socket::{SockAddr, InetAddr, AddressFamily};
+use nix::sys::socket::{AddressFamily, InetAddr, SockAddr};
 use std::fs;
 
 pub fn get_net_if_speed(device: &str) -> i32 {
@@ -8,7 +8,7 @@ pub fn get_net_if_speed(device: &str) -> i32 {
     let speed_path = format!("/sys/class/net/{}/speed", device);
     match fs::read_to_string(speed_path.clone()) {
         Ok(speed_str) => {
-            return speed_str.parse::<i32>().unwrap_or(DEFAULT_SPEED);
+            return speed_str.trim().parse().unwrap_or(DEFAULT_SPEED);
         }
         Err(_) => {
             tracing::debug!(
@@ -20,7 +20,7 @@ pub fn get_net_if_speed(device: &str) -> i32 {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NCCLSocketDev {
     pub interface_name: String,
     pub addr: SockAddr,
@@ -28,6 +28,24 @@ pub struct NCCLSocketDev {
 }
 
 pub fn find_interfaces() -> Vec<NCCLSocketDev> {
+    let NCCL_SOCKET_FAMILY = std::env::var("NCCL_SOCKET_FAMILY")
+        .unwrap_or("-1".to_string())
+        .parse::<i32>()
+        .unwrap_or(-1);
+    let NCCL_SOCKET_IFNAME = std::env::var("NCCL_SOCKET_IFNAME")
+        .unwrap_or("^docker,lo".to_string());
+    // TODO: support parse sockaddr from NCCL_COMM_ID
+
+    let mut search_not = Vec::<&str>::new();
+    let mut search_exact = Vec::<&str>::new();
+    if NCCL_SOCKET_IFNAME.starts_with("^") {
+        search_not = NCCL_SOCKET_IFNAME[1..].split(",").collect();
+    } else if NCCL_SOCKET_IFNAME.starts_with("=") {
+        search_exact = NCCL_SOCKET_IFNAME[1..].split(",").collect();
+    } else {
+        search_exact = NCCL_SOCKET_IFNAME.split(",").collect();
+    }
+
     let mut socket_devs = Vec::<NCCLSocketDev>::new();
     const MAX_IF_NAME_SIZE: usize = 16;
     // TODO: support user specified interfaces
@@ -36,17 +54,14 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
         match ifaddr.address {
             Some(addr) => {
                 println!("interface {} address {}", ifaddr.interface_name, addr);
-
                 if addr.family() != AddressFamily::Inet && addr.family() != AddressFamily::Inet6 {
                     continue;
                 }
-
                 if ifaddr.flags.contains(InterfaceFlags::IFF_LOOPBACK) {
                     continue;
                 }
 
                 assert_eq!(ifaddr.interface_name.len() < MAX_IF_NAME_SIZE, true);
-
                 let found_ifs: Vec<&NCCLSocketDev> = socket_devs
                     .iter()
                     .filter(|scoket_dev| scoket_dev.interface_name == ifaddr.interface_name)
@@ -55,10 +70,16 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
                     continue;
                 }
 
+                let pci_path = format!("/sys/class/net/{}/device", ifaddr.interface_name);
+                let pci_path: String = match std::fs::canonicalize(pci_path) {
+                    Ok(pci_path) => pci_path.to_str().unwrap_or("").to_string(),
+                    Err(err) => "".to_string(),
+                };
+
                 socket_devs.push(NCCLSocketDev {
                     addr: addr,
                     interface_name: ifaddr.interface_name.clone(),
-                    pci_path: format!("/sys/class/net/{}/device", ifaddr.interface_name),
+                    pci_path: pci_path,
                 })
             }
             None => {
@@ -69,6 +90,38 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
             }
         }
     }
+
+    let search_not = &mut search_not;
+    let search_exact = &mut search_exact;
+    let socket_devs = socket_devs.iter().filter({
+        |socket_dev| -> bool {
+        let (sockaddr, _) = socket_dev.addr.as_ffi_pair();
+        if NCCL_SOCKET_FAMILY != -1 && sockaddr.sa_family != NCCL_SOCKET_FAMILY as u16 {
+            return false;
+        }
+
+        println!("search_not={:?}, search_exact={:?}", *search_not, *search_exact);
+
+        for not_interface in &*search_not {
+            if socket_dev.interface_name.starts_with(not_interface) {
+                return false;
+            }
+        }
+        if !(&*search_exact).is_empty() {
+            let mut ok = false;
+            for exact_interface in &*search_exact {
+                if socket_dev.interface_name.starts_with(exact_interface) {
+                    ok = true;
+                    break;
+                }
+            }
+            if !ok {
+                return false;
+            }
+        }
+
+        return true;
+    }}).cloned().collect();
 
     socket_devs
 }
@@ -89,10 +142,12 @@ pub(crate) unsafe fn from_libc_sockaddr(addr: *const libc::sockaddr) -> Option<S
     } else {
         match AddressFamily::from_i32(i32::from((*addr).sa_family)) {
             Some(AddressFamily::Unix) => None,
-            Some(AddressFamily::Inet) => Some(SockAddr::Inet(
-                InetAddr::V4(*(addr as *const libc::sockaddr_in)))),
-            Some(AddressFamily::Inet6) => Some(SockAddr::Inet(
-                InetAddr::V6(*(addr as *const libc::sockaddr_in6)))),
+            Some(AddressFamily::Inet) => Some(SockAddr::Inet(InetAddr::V4(
+                *(addr as *const libc::sockaddr_in),
+            ))),
+            Some(AddressFamily::Inet6) => Some(SockAddr::Inet(InetAddr::V6(
+                *(addr as *const libc::sockaddr_in6),
+            ))),
             // #[cfg(any(target_os = "android", target_os = "linux"))]
             // Some(AddressFamily::Netlink) => Some(SockAddr::Netlink(
             //     NetlinkAddr(*(addr as *const libc::sockaddr_nl)))),
