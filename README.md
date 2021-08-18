@@ -11,7 +11,7 @@ export BAGUA_NET_LIBRARY_PATH=$(readlink -f .):$(readlink -f ../target/debug)
 
 ## Test
 
-Use nccl-test to check that the plugin runs successfully.
+Use nccl-test to check that the plugin successfully installed.
 
 ```bash
 # install nccl and nccl-test
