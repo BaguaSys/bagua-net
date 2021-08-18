@@ -54,6 +54,7 @@ pub struct SocketListenComm {
     pub tcp_listener: Arc<Mutex<net::TcpListener>>,
 }
 
+// TODO: make Rotating communicator
 #[derive(Clone)]
 pub struct SocketSendComm {
     pub tcp_sender: Arc<std::thread::JoinHandle<()>>,
@@ -97,6 +98,7 @@ static TELEMETRY_INIT_ONCE: std::sync::Once = std::sync::Once::new();
 impl BaguaNet {
     const DEFAULT_SOCKET_MAX_COMMS: i32 = 65536;
     const DEFAULT_LISTEN_BACKLOG: i32 = 16384;
+    const NSOCKS: usize = 2;
 
     pub fn new() -> Result<BaguaNet, BaguaNetError> {
         TELEMETRY_INIT_ONCE.call_once(|| {
@@ -211,22 +213,27 @@ impl BaguaNet {
         _dev_id: usize,
         socket_handle: SocketHandle,
     ) -> Result<SocketSendCommID, BaguaNetError> {
-        let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
-            Ok(stream) => stream,
-            Err(err) => {
-                tracing::warn!(
-                    "net::TcpStream::connect failed, err={:?}, socket_handle={:?}",
-                    err,
-                    socket_handle
-                );
-                return Err(BaguaNetError::TCPError(format!(
-                    "socket_handle={:?}, err={:?}",
-                    socket_handle, err
-                )));
-            }
-        };
-        stream.set_nodelay(true);
-        stream.set_nonblocking(true);
+        let mut parallel_streams = Vec::new();
+        for i in 0..BaguaNet::NSOCKS {
+            let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+                Ok(stream) => stream,
+                Err(err) => {
+                    tracing::warn!(
+                        "net::TcpStream::connect failed, err={:?}, socket_handle={:?}",
+                        err,
+                        socket_handle
+                    );
+                    return Err(BaguaNetError::TCPError(format!(
+                        "socket_handle={:?}, err={:?}",
+                        socket_handle, err
+                    )));
+                }
+            };
+            stream.set_nodelay(true);
+            stream.set_nonblocking(true);
+
+            parallel_streams.push(stream);
+        }
 
         let (msg_sender, msg_receiver) = flume::unbounded();
         let id = self.send_comm_next_id;
@@ -236,8 +243,12 @@ impl BaguaNet {
             SocketSendComm {
                 msg_sender: msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
+                    let mut stream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let mut send_nbytes = data.len().to_be_bytes();
+
+                        let mut stream = &mut parallel_streams[stream_id];
+                        stream_id = (stream_id + 1) % BaguaNet::NSOCKS;
                         utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
                         utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
 
@@ -254,15 +265,20 @@ impl BaguaNet {
         &mut self,
         listen_comm_id: SocketListenCommID,
     ) -> Result<SocketRecvCommID, BaguaNetError> {
-        let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
-        let (mut stream, addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
-            Ok(listen) => listen,
-            Err(err) => {
-                return Err(BaguaNetError::TCPError(format!("{:?}", err)));
-            }
-        };
-        stream.set_nodelay(true);
-        stream.set_nonblocking(true);
+        let mut parallel_streams = Vec::new();
+        for i in 0..BaguaNet::NSOCKS {
+            let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
+            let (mut stream, addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
+                Ok(listen) => listen,
+                Err(err) => {
+                    return Err(BaguaNetError::TCPError(format!("{:?}", err)));
+                }
+            };
+            stream.set_nodelay(true);
+            stream.set_nonblocking(true);
+
+            parallel_streams.push(stream);
+        }
 
         let (msg_sender, msg_receiver) = flume::unbounded();
         let id = self.recv_comm_next_id;
@@ -272,7 +288,11 @@ impl BaguaNet {
             SocketRecvComm {
                 msg_sender: msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
+                    let mut stream_id = 0;
                     for (mut data, state) in msg_receiver.iter() {
+                        let mut stream = &mut parallel_streams[stream_id];
+                        stream_id = (stream_id + 1) % BaguaNet::NSOCKS;
+
                         let mut target_nbytes = data.len().to_be_bytes();
                         utils::nonblocking_read_exact(&mut stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);

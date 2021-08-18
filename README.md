@@ -43,3 +43,37 @@ mpirun \
 ```
 
 If the installation is successful, there will be a log like this `NCCL INFO Using network BaguaNet`
+
+## Benchmark
+
+```
+# VGG16 on 4x8xV100 baseline
+Running benchmark...
+Iter #0: 2620.2 img/sec GPU
+Iter #1: 2771.9 img/sec GPU
+Iter #2: 2772.6 img/sec GPU
+Iter #3: 2794.5 img/sec GPU
+Iter #4: 2627.9 img/sec GPU
+Iter #5: 2787.8 img/sec GPU
+Iter #6: 2775.9 img/sec GPU
+Iter #7: 2741.6 img/sec GPU
+Iter #8: 2760.0 img/sec GPU
+Iter #9: 2796.6 img/sec GPU
+Img/sec per GPU: 85.8 +-3.8
+Total img/sec on 32 GPU(s): 2744.9 +-122.3
+
+# VGG16 on 4x8xV100 bagua-net
+Running benchmark...
+Iter #0: 3643.4 img/sec GPU
+Iter #1: 3648.4 img/sec GPU
+Iter #2: 3544.0 img/sec GPU
+Iter #3: 3656.5 img/sec GPU
+Iter #4: 3684.8 img/sec GPU
+Iter #5: 3641.1 img/sec GPU
+Iter #6: 3643.4 img/sec GPU
+Iter #7: 3590.5 img/sec GPU
+Iter #8: 3635.0 img/sec GPU
+Iter #9: 3694.8 img/sec GPU
+Img/sec per GPU: 113.7 +-2.5
+Total img/sec on 32 GPU(s): 3638.2 +-80.9
+```
