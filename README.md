@@ -1,17 +1,17 @@
 ## Install
 
-Install libnccl-net.so.
+Install libnccl-net.so
 
 ```bash
 cargo build
 cd cc && make
 
-export BAGUA_NET_PATH=$(readlink -f .):$(readlink -f ../target/debug)
+export BAGUA_NET_LIBRARY_PATH=$(readlink -f .):$(readlink -f ../target/debug)
 ```
 
 ## Test
 
-Run nccl-test to test performance.
+Use nccl-test to check that the plugin runs successfully.
 
 ```bash
 # install nccl and nccl-test
@@ -38,13 +38,15 @@ mpirun \
     -mca pml ob1 -mca btl ^openib \
     -mca btl_tcp_if_include eth01 \
     -x NCCL_DEBUG=INFO \
-    -x LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$BAGUA_NET_PATH \
+    -x LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$BAGUA_NET_LIBRARY_PATH \
     ./build/all_reduce_perf -b 8 -e 128M -f 2 -g 1
 ```
 
-If the installation is successful, there will be a log like this `NCCL INFO Using network BaguaNet`
+If the installation is successful, there will be a log like this `NCCL INFO Using network BaguaNet`.
 
 ## Benchmark
+
+Through the benchmark test of the VGG16 model, there is a 32% increase in throughput. You can reproduce through [this script](https://github.com/BaguaSys/examples/blob/main/benchmark/synthetic_benchmark.py).
 
 ```
 # VGG16 on 4x8xV100 baseline
