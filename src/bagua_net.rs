@@ -1,7 +1,12 @@
 use crate::utils;
 use crate::utils::NCCLSocketDev;
 use bytes::{Bytes, BytesMut};
-use nix::sys::socket::{InetAddr, SockAddr};
+use nix::sys::socket::{AddressFamily, InetAddr, SockAddr};
+use opentelemetry::{
+    trace::{Span, TraceContextExt, Tracer},
+    KeyValue,
+};
+use socket2::{Domain, Socket, Type};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net;
@@ -26,23 +31,7 @@ pub struct BaguaNet {
     pub recv_comm_map: HashMap<SocketRecvCommID, SocketRecvComm>,
     pub socket_request_next_id: usize,
     pub socket_request_map: HashMap<SocketRequestID, SocketRequest>,
-
-    pub send_sender: flume::Sender<(Arc<Mutex<net::TcpStream>>, Arc<Mutex<(bool, usize)>>, Bytes)>,
-    pub send_receiver:
-        flume::Receiver<(Arc<Mutex<net::TcpStream>>, Arc<Mutex<(bool, usize)>>, Bytes)>,
-    pub recv_sender: flume::Sender<(
-        Arc<Mutex<net::TcpStream>>,
-        Arc<Mutex<(bool, usize)>>,
-        &'static mut [u8],
-    )>,
-    pub recv_receiver: flume::Receiver<(
-        Arc<Mutex<net::TcpStream>>,
-        Arc<Mutex<(bool, usize)>>,
-        &'static mut [u8],
-    )>,
-
-    send_worker: std::thread::JoinHandle<()>,
-    recv_worker: std::thread::JoinHandle<()>,
+    pub trace_span_context: opentelemetry::Context,
 }
 
 #[derive(Debug)]
@@ -83,14 +72,18 @@ pub enum BaguaNetError {
     IOError(String),
     #[error("tcp error")]
     TCPError(String),
+    #[error("inner error")]
+    InnerError(String),
 }
 
 pub struct SocketSendRequest {
     pub state: Arc<Mutex<(bool, usize)>>,
+    pub trace_span: opentelemetry::global::BoxedSpan,
 }
 
 pub struct SocketRecvRequest {
     pub state: Arc<Mutex<(bool, usize)>>,
+    pub trace_span: opentelemetry::global::BoxedSpan,
 }
 
 pub enum SocketRequest {
@@ -98,12 +91,42 @@ pub enum SocketRequest {
     RecvRequest(SocketRecvRequest),
 }
 
+static TELEMETRY_INIT_ONCE: std::sync::Once = std::sync::Once::new();
+// static TELEMETRY_GUARD: Option<TelemetryGuard> = None;
+
 impl BaguaNet {
     const DEFAULT_SOCKET_MAX_COMMS: i32 = 65536;
+    const DEFAULT_LISTEN_BACKLOG: i32 = 16384;
 
     pub fn new() -> Result<BaguaNet, BaguaNetError> {
-        let (send_sender, send_receiver) = flume::unbounded();
-        let (recv_sender, recv_receiver) = flume::unbounded();
+        TELEMETRY_INIT_ONCE.call_once(|| {
+            opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+
+            let jaeger_addr = match std::env::var("BAGUA_NET_JAEGER_ADDRESS") {
+                Ok(jaeger_addr) => {
+                    tracing::info!("detected auto tuning server, connecting");
+                    jaeger_addr
+                }
+                Err(_) => {
+                    tracing::warn!("Jaeger server not detected.");
+                    return;
+                }
+            };
+
+            // Write my jaeger agent
+            let tracer = opentelemetry_jaeger::new_pipeline()
+                .with_collector_endpoint(format!("http://{}/api/traces", jaeger_addr))
+                .with_service_name("bagua-net")
+                .install_batch(opentelemetry::runtime::AsyncStd)
+                .unwrap();
+        });
+
+        let tracer = opentelemetry::global::tracer("bagua-net");
+        let mut span = tracer.start("BaguaNet");
+        span.set_attribute(KeyValue::new(
+            "socket_devs",
+            format!("{:?}", utils::find_interfaces()),
+        ));
 
         Ok(Self {
             socket_devs: utils::find_interfaces(),
@@ -115,59 +138,7 @@ impl BaguaNet {
             recv_comm_map: Default::default(),
             socket_request_next_id: 0,
             socket_request_map: Default::default(),
-
-            send_sender: send_sender.clone(),
-            send_receiver: send_receiver.clone(),
-            recv_sender: recv_sender.clone(),
-            recv_receiver: recv_receiver.clone(),
-
-            send_worker: std::thread::spawn(move || {
-                for (tcp_stream, send_nbytes, data) in send_receiver.iter() {
-                    let mut tcp_stream = tcp_stream.lock().unwrap();
-                    let send_size = data.len().to_be_bytes();
-                    (*tcp_stream).write_all(&send_size[..]).unwrap();
-
-                    if data.len() != 0 {
-                        (*tcp_stream).write_all(&data[..]).unwrap();
-                    }
-
-                    (*send_nbytes.lock().unwrap()) = (true, data.len());
-                }
-            }),
-            recv_worker: std::thread::spawn(move || {
-                for (tcp_stream, recv_nbytes, mut data) in recv_receiver.iter() {
-                    // NOTE: tcp_stream must be nonblock, otherwise it may deadlock
-                    let mut target_nbytes = data.len().to_be_bytes();
-                    (*tcp_stream.lock().unwrap()).set_nonblocking(false);
-                    (*tcp_stream.lock().unwrap())
-                        .read_exact(&mut target_nbytes[..])
-                        .unwrap();
-                    let target_nbytes = usize::from_be_bytes(target_nbytes);
-
-                    let mut offset = 0;
-                    while offset < target_nbytes {
-                        {
-                            let mut tcp_stream = tcp_stream.lock().unwrap();
-                            tcp_stream.set_nonblocking(true);
-                            let nbytes = match (*tcp_stream).read(&mut data[offset..target_nbytes])
-                            {
-                                Ok(nbytes) => nbytes,
-                                Err(err) => {
-                                    if err.kind() != std::io::ErrorKind::WouldBlock {}
-
-                                    0
-                                }
-                            };
-                            offset += nbytes;
-                            (*recv_nbytes.lock().unwrap()) = (false, offset);
-                        }
-
-                        std::thread::yield_now();
-                    }
-
-                    (*recv_nbytes.lock().unwrap()) = (true, offset);
-                }
-            }),
+            trace_span_context: opentelemetry::Context::current_with_span(span),
         })
     }
 
@@ -194,16 +165,35 @@ impl BaguaNet {
         dev_id: usize,
     ) -> Result<(SocketHandle, SocketListenCommID), BaguaNetError> {
         let socket_dev = &self.socket_devs[dev_id];
-        let listener = match net::TcpListener::bind(socket_dev.addr.clone().to_str()) {
-            Ok(listener) => listener,
-            Err(err) => return Err(BaguaNetError::TCPError(format!("{:?}", err))),
+        let addr = match socket_dev.addr.clone() {
+            SockAddr::Inet(inet_addr) => inet_addr,
+            others => {
+                return Err(BaguaNetError::InnerError(format!(
+                    "Got invalid socket address, which is {:?}",
+                    others
+                )))
+            }
         };
 
+        let socket = match Socket::new(
+            match addr {
+                InetAddr::V4(_) => Domain::IPV4,
+                InetAddr::V6(_) => Domain::IPV6,
+            },
+            Type::STREAM,
+            None,
+        ) {
+            Ok(sock) => sock,
+            Err(err) => return Err(BaguaNetError::IOError(format!("{:?}", err))),
+        };
+        socket.bind(&addr.to_std().into()).unwrap();
+        socket.listen(BaguaNet::DEFAULT_LISTEN_BACKLOG).unwrap();
+
+        let listener: net::TcpListener = socket.into();
         let socket_addr = listener.local_addr().unwrap();
         let socket_handle = SocketHandle {
             addr: SockAddr::new_inet(InetAddr::from_std(&socket_addr)),
         };
-
         let id = self.listen_comm_next_id;
         self.listen_comm_next_id += 1;
         self.listen_comm_map.insert(
@@ -235,6 +225,8 @@ impl BaguaNet {
                 )));
             }
         };
+        stream.set_nodelay(true);
+        stream.set_nonblocking(true);
 
         let (msg_sender, msg_receiver) = flume::unbounded();
         let id = self.send_comm_next_id;
@@ -245,12 +237,9 @@ impl BaguaNet {
                 msg_sender: msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
                     for (data, state) in msg_receiver.iter() {
-                        let send_size = data.len().to_be_bytes();
-                        stream.write_all(&send_size[..]).unwrap();
-
-                        if data.len() != 0 {
-                            stream.write_all(&data[..]).unwrap();
-                        }
+                        let mut send_nbytes = data.len().to_be_bytes();
+                        utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
+                        utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
 
                         (*state.lock().unwrap()) = (true, data.len());
                     }
@@ -272,6 +261,8 @@ impl BaguaNet {
                 return Err(BaguaNetError::TCPError(format!("{:?}", err)));
             }
         };
+        stream.set_nodelay(true);
+        stream.set_nonblocking(true);
 
         let (msg_sender, msg_receiver) = flume::unbounded();
         let id = self.recv_comm_next_id;
@@ -281,35 +272,13 @@ impl BaguaNet {
             SocketRecvComm {
                 msg_sender: msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
-
                     for (mut data, state) in msg_receiver.iter() {
                         let mut target_nbytes = data.len().to_be_bytes();
-                        stream.set_nonblocking(false);
-                        stream
-                            .read_exact(&mut target_nbytes[..])
-                            .unwrap();
+                        utils::nonblocking_read_exact(&mut stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
-    
-                        let mut offset = 0;
-                        while offset < target_nbytes {
-                            {
-                                stream.set_nonblocking(true);
-                                let nbytes = match stream.read(&mut data[offset..target_nbytes])
-                                {
-                                    Ok(nbytes) => nbytes,
-                                    Err(err) => {
-                                        if err.kind() != std::io::ErrorKind::WouldBlock {}
-    
-                                        0
-                                    }
-                                };
-                                offset += nbytes;
-                            }
-    
-                            std::thread::yield_now();
-                        }
-    
-                        (*state.lock().unwrap()) = (true, offset);
+                        utils::nonblocking_read_exact(&mut stream, &mut data[..target_nbytes])
+                            .unwrap();
+                        (*state.lock().unwrap()) = (true, target_nbytes);
                     }
                 })),
             },
@@ -323,8 +292,16 @@ impl BaguaNet {
         send_comm_id: SocketSendCommID,
         data: &'static [u8],
     ) -> Result<SocketRequestID, BaguaNetError> {
+        let tracer = opentelemetry::global::tracer("bagua-net");
+        let mut span = tracer
+            .span_builder("isend")
+            .with_parent_context(self.trace_span_context.clone())
+            .start(&tracer);
         let send_comm = self.send_comm_map.get(&send_comm_id).unwrap();
         let id = self.socket_request_next_id;
+
+        span.set_attribute(KeyValue::new("id", id as i64));
+        span.set_attribute(KeyValue::new("nbytes", data.len() as i64));
 
         self.socket_request_next_id += 1;
         let task_state = Arc::new(Mutex::new((false, 0)));
@@ -332,6 +309,7 @@ impl BaguaNet {
             id,
             SocketRequest::SendRequest(SocketSendRequest {
                 state: task_state.clone(),
+                trace_span: span,
             }),
         );
 
@@ -348,8 +326,15 @@ impl BaguaNet {
         recv_comm_id: SocketRecvCommID,
         data: &'static mut [u8],
     ) -> Result<SocketRequestID, BaguaNetError> {
+        let tracer = opentelemetry::global::tracer("bagua-net");
+        let mut span = tracer
+            .span_builder("irecv")
+            .with_parent_context(self.trace_span_context.clone())
+            .start(&tracer);
         let recv_comm = self.recv_comm_map.get(&recv_comm_id).unwrap();
         let id = self.socket_request_next_id;
+
+        span.set_attribute(KeyValue::new("id", id as i64));
 
         self.socket_request_next_id += 1;
         let task_state = Arc::new(Mutex::new((false, 0)));
@@ -357,13 +342,11 @@ impl BaguaNet {
             id,
             SocketRequest::RecvRequest(SocketRecvRequest {
                 state: task_state.clone(),
+                trace_span: span,
             }),
         );
 
-        recv_comm
-            .msg_sender
-            .send((data, task_state))
-            .unwrap();
+        recv_comm.msg_sender.send((data, task_state)).unwrap();
 
         Ok(id)
     }
@@ -371,19 +354,13 @@ impl BaguaNet {
     pub fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
         let request = self.socket_request_map.get_mut(&request_id).unwrap();
         let ret = match request {
-            SocketRequest::SendRequest(send_req) => {
-                Ok(*send_req.state.lock().unwrap())
-            }
-            SocketRequest::RecvRequest(recv_req) => {
-                Ok(*recv_req.state.lock().unwrap())
-            }
+            SocketRequest::SendRequest(send_req) => Ok(*send_req.state.lock().unwrap()),
+            SocketRequest::RecvRequest(recv_req) => Ok(*recv_req.state.lock().unwrap()),
         };
 
         if let Ok(ret) = ret {
             if ret.0 {
                 self.socket_request_map.remove(&request_id).unwrap();
-            } else {
-                std::thread::yield_now();
             }
         }
 
@@ -409,6 +386,13 @@ impl BaguaNet {
         self.listen_comm_map.remove(&listen_comm_id);
 
         Ok(())
+    }
+}
+
+impl Drop for BaguaNet {
+    fn drop(&mut self) {
+        // TODO: make shutdown global
+        opentelemetry::global::shutdown_tracer_provider();
     }
 }
 

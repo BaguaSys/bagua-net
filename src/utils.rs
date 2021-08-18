@@ -1,6 +1,8 @@
 use nix::net::if_::InterfaceFlags;
 use nix::sys::socket::{AddressFamily, InetAddr, SockAddr};
 use std::fs;
+use std::io;
+use std::io::{Read, Write};
 
 pub fn get_net_if_speed(device: &str) -> i32 {
     const DEFAULT_SPEED: i32 = 10000;
@@ -32,8 +34,8 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
         .unwrap_or("-1".to_string())
         .parse::<i32>()
         .unwrap_or(-1);
-    let NCCL_SOCKET_IFNAME = std::env::var("NCCL_SOCKET_IFNAME")
-        .unwrap_or("^docker,lo".to_string());
+    let NCCL_SOCKET_IFNAME =
+        std::env::var("NCCL_SOCKET_IFNAME").unwrap_or("^docker,lo".to_string());
     // TODO @shjwudp: support parse sockaddr from NCCL_COMM_ID
 
     let mut search_not = Vec::<&str>::new();
@@ -52,7 +54,6 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
     for ifaddr in addrs {
         match ifaddr.address {
             Some(addr) => {
-                println!("interface {} address {}", ifaddr.interface_name, addr);
                 if addr.family() != AddressFamily::Inet && addr.family() != AddressFamily::Inet6 {
                     continue;
                 }
@@ -92,37 +93,88 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
 
     let search_not = &mut search_not;
     let search_exact = &mut search_exact;
-    let socket_devs = socket_devs.iter().filter({
-        |socket_dev| -> bool {
-        let (sockaddr, _) = socket_dev.addr.as_ffi_pair();
-        if NCCL_SOCKET_FAMILY != -1 && sockaddr.sa_family != NCCL_SOCKET_FAMILY as u16 {
-            return false;
-        }
-
-        println!("search_not={:?}, search_exact={:?}", *search_not, *search_exact);
-
-        for not_interface in &*search_not {
-            if socket_dev.interface_name.starts_with(not_interface) {
-                return false;
-            }
-        }
-        if !(&*search_exact).is_empty() {
-            let mut ok = false;
-            for exact_interface in &*search_exact {
-                if socket_dev.interface_name.starts_with(exact_interface) {
-                    ok = true;
-                    break;
+    let socket_devs = socket_devs
+        .iter()
+        .filter({
+            |socket_dev| -> bool {
+                let (sockaddr, _) = socket_dev.addr.as_ffi_pair();
+                if NCCL_SOCKET_FAMILY != -1 && sockaddr.sa_family != NCCL_SOCKET_FAMILY as u16 {
+                    return false;
                 }
-            }
-            if !ok {
-                return false;
-            }
-        }
 
-        return true;
-    }}).cloned().collect();
+                for not_interface in &*search_not {
+                    if socket_dev.interface_name.starts_with(not_interface) {
+                        return false;
+                    }
+                }
+                if !(&*search_exact).is_empty() {
+                    let mut ok = false;
+                    for exact_interface in &*search_exact {
+                        if socket_dev.interface_name.starts_with(exact_interface) {
+                            ok = true;
+                            break;
+                        }
+                    }
+                    if !ok {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+        })
+        .cloned()
+        .collect();
 
     socket_devs
+}
+
+pub fn nonblocking_write_all(stream: &mut std::net::TcpStream, mut buf: &[u8]) -> io::Result<()> {
+    while !buf.is_empty() {
+        match stream.write(buf) {
+            Ok(0) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "failed to write whole buffer",
+                ));
+            }
+            Ok(n) => buf = &buf[n..],
+            Err(ref e)
+                if e.kind() == io::ErrorKind::Interrupted
+                    || e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => return Err(e),
+        }
+        std::thread::yield_now();
+    }
+    Ok(())
+}
+
+pub fn nonblocking_read_exact(
+    stream: &mut std::net::TcpStream,
+    mut buf: &mut [u8],
+) -> io::Result<()> {
+    while !buf.is_empty() {
+        match stream.read(buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                let tmp = buf;
+                buf = &mut tmp[n..];
+            }
+            Err(ref e)
+                if e.kind() == io::ErrorKind::Interrupted
+                    || e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => return Err(e),
+        }
+        std::thread::yield_now();
+    }
+    if !buf.is_empty() {
+        Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "failed to fill whole buffer",
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 /// Creates a `SockAddr` struct from libc's sockaddr.
