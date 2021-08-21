@@ -178,13 +178,22 @@ pub fn nonblocking_read_exact(
 }
 
 pub fn parse_user_pass_and_addr(raw_url: &str) -> Option<(String, String, String)> {
-    let re = regex::Regex::new(r"^([^:]+):([^@]+)@(\S+)$").unwrap();
+    let re = regex::Regex::new(r"^(?:([^:]+):([^@]+)@)?(\S+)$").unwrap();
     match re.captures(raw_url) {
-        Some(caps) => Some((
-            caps.get(1).unwrap().as_str().to_owned(),
-            caps.get(2).unwrap().as_str().to_owned(),
-            caps.get(3).unwrap().as_str().to_owned(),
-        )),
+        Some(caps) => {
+            println!("caps={:?}", caps);
+            let username = match caps.get(1) {
+                Some(username) => username.as_str().to_owned(),
+                None => Default::default(),
+            };
+            let password = match caps.get(2) {
+                Some(password) => password.as_str().to_owned(),
+                None => Default::default(),
+            };
+            let address = caps.get(3).unwrap().as_str().to_owned();
+
+            Some((username, password, address))
+        }
         None => None,
     }
 }
@@ -253,13 +262,16 @@ mod tests {
     fn test_parse() {
         let username = "nagle";
         let password = "1984";
-        let url = "127.0.0.1:9090";
+        let address = "127.0.0.1:9090";
 
-        let what = parse_user_pass_and_addr(&format!("{}:{}@{}", username, password, url)).unwrap();
-        assert_eq!(what.0, username);
-        assert_eq!(what.1, password);
-        assert_eq!(what.2, url);
+        let (user, pass, addr) = parse_user_pass_and_addr(&format!("{}:{}@{}", username, password, address)).unwrap();
+        assert_eq!(user, username);
+        assert_eq!(pass, password);
+        assert_eq!(addr, address);
 
-        assert_eq!(parse_user_pass_and_addr(url), None);
+        let (user, pass, addr) = parse_user_pass_and_addr(address).unwrap();
+        assert_eq!(user, "");
+        assert_eq!(pass, "");
+        assert_eq!(addr, address);
     }
 }

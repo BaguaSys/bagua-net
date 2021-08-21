@@ -3,8 +3,8 @@ use crate::utils::NCCLSocketDev;
 use bytes::Bytes;
 use nix::sys::socket::{InetAddr, SockAddr};
 use opentelemetry::{
-    trace::{Span, TraceContextExt, Tracer},
     metrics::{BoundCounter, BoundValueRecorder},
+    trace::{Span, TraceContextExt, Tracer},
     KeyValue,
 };
 use socket2::{Domain, Socket, Type};
@@ -154,13 +154,22 @@ impl BaguaNet {
         let meter = opentelemetry::global::meter("bagua-net");
         let state = Arc::new(AppState {
             exporter: prom_exporter.clone(),
-            isend_nbytes_gauge: meter.u64_value_recorder(format!("BaguaNet-{}.isend_nbytes", rank))
+            isend_nbytes_gauge: meter
+                .u64_value_recorder(format!("BaguaNet-{}.isend_nbytes", rank))
                 .init()
                 .bind(HANDLER_ALL.as_ref()),
             uploader: std::thread::spawn(move || {
-                let prometheus_addr = std::env::var("BAGUA_NET_PROMETHEUS_ADDRESS").unwrap_or_default();
-                let (user, pass, address) = match utils::parse_user_pass_and_addr(&prometheus_addr) {
-                    Some(ret) => ret,
+                let prometheus_addr =
+                    std::env::var("BAGUA_NET_PROMETHEUS_ADDRESS").unwrap_or_default();
+                let (user, pass, address) = match utils::parse_user_pass_and_addr(&prometheus_addr)
+                {
+                    Some(ret) => {
+                        println!(
+                            "parse prometheus_addr success, user={}, pass={}, address={}",
+                            user, pass, address
+                        );
+                        ret
+                    }
                     None => return,
                 };
 
@@ -176,7 +185,8 @@ impl BaguaNet {
                             username: user.clone(),
                             password: pass.clone(),
                         }),
-                    ).unwrap();
+                    )
+                    .unwrap();
                 }
             }),
         });
