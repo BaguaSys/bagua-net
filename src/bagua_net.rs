@@ -164,10 +164,7 @@ impl BaguaNet {
                 let (user, pass, address) = match utils::parse_user_pass_and_addr(&prometheus_addr)
                 {
                     Some(ret) => {
-                        println!(
-                            "parse prometheus_addr success, user={}, pass={}, address={}",
-                            user, pass, address
-                        );
+                        println!("parse prometheus_addr success, ret={:?}", ret);
                         ret
                     }
                     None => return,
