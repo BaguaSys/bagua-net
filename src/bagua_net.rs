@@ -161,6 +161,7 @@ impl BaguaNet {
             uploader: std::thread::spawn(move || {
                 let prometheus_addr =
                     std::env::var("BAGUA_NET_PROMETHEUS_ADDRESS").unwrap_or_default();
+                println!("prometheus_addr={}", prometheus_addr);
                 let (user, pass, address) = match utils::parse_user_pass_and_addr(&prometheus_addr)
                 {
                     Some(ret) => {
