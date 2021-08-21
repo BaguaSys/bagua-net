@@ -98,7 +98,7 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
         .filter({
             |socket_dev| -> bool {
                 let (sockaddr, _) = socket_dev.addr.as_ffi_pair();
-                if NCCL_SOCKET_FAMILY != -1 && sockaddr.sa_family != NCCL_SOCKET_FAMILY as u16 {
+                if NCCL_SOCKET_FAMILY != -1 && sockaddr.sa_family as i32 != NCCL_SOCKET_FAMILY {
                     return false;
                 }
 
@@ -177,6 +177,18 @@ pub fn nonblocking_read_exact(
     }
 }
 
+pub fn parse_user_pass_and_addr(raw_url: &str) -> Option<(String, String, String)> {
+    let re = regex::Regex::new(r"^([^:]+):([^@]+)@(\S+)$").unwrap();
+    match re.captures(raw_url) {
+        Some(caps) => Some((
+            caps.get(1).unwrap().as_str().to_owned(),
+            caps.get(2).unwrap().as_str().to_owned(),
+            caps.get(3).unwrap().as_str().to_owned(),
+        )),
+        None => None,
+    }
+}
+
 /// Creates a `SockAddr` struct from libc's sockaddr.
 ///
 /// Supports only the following address families: Unix, Inet (v4 & v6), Netlink and System.
@@ -230,5 +242,24 @@ pub(crate) unsafe fn from_libc_sockaddr(addr: *const libc::sockaddr) -> Option<S
             // entry instead of a proper conversion to a `SockAddr`.
             Some(_) | None => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse() {
+        let username = "nagle";
+        let password = "1984";
+        let url = "127.0.0.1:9090";
+
+        let what = parse_user_pass_and_addr(&format!("{}:{}@{}", username, password, url)).unwrap();
+        assert_eq!(what.0, username);
+        assert_eq!(what.1, password);
+        assert_eq!(what.2, url);
+
+        assert_eq!(parse_user_pass_and_addr(url), None);
     }
 }

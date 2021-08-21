@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lazy_static;
+
 mod bagua_net;
 mod utils;
 
@@ -170,10 +173,19 @@ pub extern "C" fn bagua_net_c_connect(
 
     unsafe {
         let sockaddr = (*socket_handle).sockaddr;
-        let sockaddr = libc::sockaddr {
-            sa_family: sockaddr.sa_family,
-            sa_data: sockaddr.sa_data,
-            // sa_len: 0,
+
+        let sockaddr = if cfg!(target_os = "macos") {
+            libc::sockaddr {
+                sa_family: sockaddr.sa_family,
+                sa_data: sockaddr.sa_data,
+                sa_len: 0,
+            }
+        } else {
+            libc::sockaddr {
+                sa_family: sockaddr.sa_family,
+                sa_data: sockaddr.sa_data,
+                sa_len: 0,
+            }
         };
 
         *socket_send_comm_id = match (*ptr).inner.lock().unwrap().connect(
