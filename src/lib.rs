@@ -156,6 +156,7 @@ pub extern "C" fn bagua_net_c_listen(
 /// -2: invalid parameter
 /// -3: connect failed
 #[no_mangle]
+#[cfg(not(target_os = "macos"))]
 pub extern "C" fn bagua_net_c_connect(
     ptr: *mut BaguaNetC,
     dev_id: i32,
@@ -174,18 +175,9 @@ pub extern "C" fn bagua_net_c_connect(
     unsafe {
         let sockaddr = (*socket_handle).sockaddr;
 
-        let sockaddr = if cfg!(target_os = "macos") {
-            libc::sockaddr {
-                sa_family: sockaddr.sa_family,
-                sa_data: sockaddr.sa_data,
-                sa_len: 0,
-            }
-        } else {
-            libc::sockaddr {
-                sa_family: sockaddr.sa_family,
-                sa_data: sockaddr.sa_data,
-                sa_len: 0,
-            }
+        let sockaddr = libc::sockaddr {
+            sa_family: sockaddr.sa_family,
+            sa_data: sockaddr.sa_data,
         };
 
         *socket_send_comm_id = match (*ptr).inner.lock().unwrap().connect(
