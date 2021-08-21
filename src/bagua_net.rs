@@ -283,8 +283,8 @@ impl BaguaNet {
                     )));
                 }
             };
-            stream.set_nodelay(true).unwrap();
-            stream.set_nonblocking(true).unwrap();
+            // stream.set_nodelay(true).unwrap();
+            // stream.set_nonblocking(true).unwrap();
 
             parallel_streams.push(stream);
         }
@@ -304,10 +304,10 @@ impl BaguaNet {
 
                         let mut stream = &mut parallel_streams[stream_id];
                         stream_id = (stream_id + 1) % BaguaNet::NSTREAMS;
-                        utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
-                        // stream.write_all(&send_nbytes[..]).unwrap();
-                        utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
-                        // stream.write_all(&data[..]).unwrap();
+                        // utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
+                        stream.write_all(&send_nbytes[..]).unwrap();
+                        // utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
+                        stream.write_all(&data[..]).unwrap();
 
                         metrics.isend_nbytes_gauge.record(data.len() as u64);
                         (*state.lock().unwrap()) = (true, data.len());
@@ -332,8 +332,8 @@ impl BaguaNet {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
                 }
             };
-            stream.set_nodelay(true).unwrap();
-            stream.set_nonblocking(true).unwrap();
+            // stream.set_nodelay(true).unwrap();
+            // stream.set_nonblocking(true).unwrap();
 
             parallel_streams.push(stream);
         }
@@ -352,12 +352,12 @@ impl BaguaNet {
                         stream_id = (stream_id + 1) % BaguaNet::NSTREAMS;
 
                         let mut target_nbytes = data.len().to_be_bytes();
-                        // stream.read_exact(&mut target_nbytes[..]).unwrap();
-                        utils::nonblocking_read_exact(&mut stream, &mut target_nbytes[..]).unwrap();
+                        stream.read_exact(&mut target_nbytes[..]).unwrap();
+                        // utils::nonblocking_read_exact(&mut stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
-                        // stream.read_exact(&mut data[..target_nbytes]).unwrap();
-                        utils::nonblocking_read_exact(&mut stream, &mut data[..target_nbytes])
-                            .unwrap();
+                        stream.read_exact(&mut data[..target_nbytes]).unwrap();
+                        // utils::nonblocking_read_exact(&mut stream, &mut data[..target_nbytes])
+                        //     .unwrap();
                         (*state.lock().unwrap()) = (true, target_nbytes);
                     }
                 })),
