@@ -273,5 +273,16 @@ mod tests {
         assert_eq!(user, "");
         assert_eq!(pass, "");
         assert_eq!(addr, address);
+
+        match parse_user_pass_and_addr("106.12.175.12:19091") {
+            Some(ret) => {
+                println!("ret={:?}", ret);
+            },
+            None => {
+                println!("abc");
+            }
+        };
+
+        println!("{:?}", parse_user_pass_and_addr("106.12.175.12:19091").unwrap());
     }
 }

@@ -85,6 +85,7 @@ static TELEMETRY_INIT_ONCE: std::sync::Once = std::sync::Once::new();
 struct AppState {
     exporter: opentelemetry_prometheus::PrometheusExporter,
     isend_nbytes_gauge: BoundValueRecorder<'static, u64>,
+    irecv_nbytes_gauge: BoundValueRecorder<'static, u64>,
     uploader: std::thread::JoinHandle<()>,
 }
 
@@ -155,7 +156,11 @@ impl BaguaNet {
         let state = Arc::new(AppState {
             exporter: prom_exporter.clone(),
             isend_nbytes_gauge: meter
-                .u64_value_recorder(format!("BaguaNet-{}.isend_nbytes", rank))
+                .u64_value_recorder("isend_nbytes")
+                .init()
+                .bind(HANDLER_ALL.as_ref()),
+            irecv_nbytes_gauge: meter
+                .u64_value_recorder("irecv_nbytes")
                 .init()
                 .bind(HANDLER_ALL.as_ref()),
             uploader: std::thread::spawn(move || {
@@ -172,11 +177,11 @@ impl BaguaNet {
                 };
 
                 loop {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    std::thread::sleep(std::time::Duration::from_micros(200));
                     let metric_families = prom_exporter.registry().gather();
                     prometheus::push_metrics(
-                        "example_push",
-                        prometheus::labels! {"instance".to_owned() => "HAL-9000".to_owned(),},
+                        "BaguaNet",
+                        prometheus::labels! { "rank".to_owned() => rank, },
                         &address,
                         metric_families,
                         Some(prometheus::BasicAuthentication {
@@ -349,6 +354,7 @@ impl BaguaNet {
         let (msg_sender, msg_receiver) = flume::unbounded();
         let id = self.recv_comm_next_id;
         self.recv_comm_next_id += 1;
+        let metrics = self.state.clone();
         self.recv_comm_map.insert(
             id,
             SocketRecvComm {
@@ -366,6 +372,7 @@ impl BaguaNet {
                         stream.read_exact(&mut data[..target_nbytes]).unwrap();
                         // utils::nonblocking_read_exact(&mut stream, &mut data[..target_nbytes])
                         //     .unwrap();
+                        metrics.irecv_nbytes_gauge.record(data.len() as u64);
                         (*state.lock().unwrap()) = (true, target_nbytes);
                     }
                 })),

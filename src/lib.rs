@@ -156,7 +156,7 @@ pub extern "C" fn bagua_net_c_listen(
 /// -2: invalid parameter
 /// -3: connect failed
 #[no_mangle]
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 pub extern "C" fn bagua_net_c_connect(
     ptr: *mut BaguaNetC,
     dev_id: i32,
