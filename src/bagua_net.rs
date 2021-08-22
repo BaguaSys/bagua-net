@@ -3,7 +3,7 @@ use crate::utils::NCCLSocketDev;
 use bytes::Bytes;
 use nix::sys::socket::{InetAddr, SockAddr};
 use opentelemetry::{
-    metrics::{BoundCounter, BoundValueRecorder},
+    metrics::BoundValueRecorder,
     trace::{Span, TraceContextExt, Tracer},
     KeyValue,
 };
@@ -179,7 +179,7 @@ impl BaguaNet {
                 loop {
                     std::thread::sleep(std::time::Duration::from_micros(200));
                     let metric_families = prom_exporter.registry().gather();
-                    prometheus::push_metrics(
+                    match prometheus::push_metrics(
                         "BaguaNet",
                         prometheus::labels! { "rank".to_owned() => rank.to_string(), },
                         &address,
@@ -188,8 +188,12 @@ impl BaguaNet {
                             username: user.clone(),
                             password: pass.clone(),
                         }),
-                    )
-                    .unwrap();
+                    ) {
+                        Ok(_) => {},
+                        Err(err) => {
+                            println!("{:?}", err);
+                        }
+                    }
                 }
             }),
         });
@@ -281,7 +285,7 @@ impl BaguaNet {
         socket_handle: SocketHandle,
     ) -> Result<SocketSendCommID, BaguaNetError> {
         let mut parallel_streams = Vec::new();
-        for i in 0..BaguaNet::NSTREAMS {
+        for _ in 0..BaguaNet::NSTREAMS {
             let stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
                 Ok(stream) => stream,
                 Err(err) => {
