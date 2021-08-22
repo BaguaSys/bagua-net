@@ -110,12 +110,12 @@ pub struct BaguaNet {
     pub trace_on_flag: bool,
     pub rank: i32,
     state: Arc<AppState>,
+    nstreams: usize,
 }
 
 impl BaguaNet {
     const DEFAULT_SOCKET_MAX_COMMS: i32 = 65536;
     const DEFAULT_LISTEN_BACKLOG: i32 = 16384;
-    const NSTREAMS: usize = 2;
 
     pub fn new() -> Result<BaguaNet, BaguaNetError> {
         let rank: i32 = std::env::var("RANK")
@@ -212,6 +212,10 @@ impl BaguaNet {
             rank: rank,
             trace_on_flag: rank < 8,
             state: state,
+            nstreams: std::env::var("BAGUA_NET_NSTREAMS")
+                .unwrap_or("1".to_owned())
+                .parse()
+                .unwrap(),
         })
     }
 
@@ -285,7 +289,7 @@ impl BaguaNet {
         socket_handle: SocketHandle,
     ) -> Result<SocketSendCommID, BaguaNetError> {
         let mut parallel_streams = Vec::new();
-        for _ in 0..BaguaNet::NSTREAMS {
+        for _ in 0..self.nstreams {
             let stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
                 Ok(stream) => stream,
                 Err(err) => {
@@ -310,6 +314,7 @@ impl BaguaNet {
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
         let metrics = self.state.clone();
+        let nstreams = self.nstreams;
         self.send_comm_map.insert(
             id,
             SocketSendComm {
@@ -320,7 +325,7 @@ impl BaguaNet {
                         let send_nbytes = data.len().to_be_bytes();
 
                         let mut stream = &mut parallel_streams[stream_id];
-                        stream_id = (stream_id + 1) % BaguaNet::NSTREAMS;
+                        stream_id = (stream_id + 1) % nstreams;
                         // utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
                         stream.write_all(&send_nbytes[..]).unwrap();
                         // utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
@@ -341,7 +346,7 @@ impl BaguaNet {
         listen_comm_id: SocketListenCommID,
     ) -> Result<SocketRecvCommID, BaguaNetError> {
         let mut parallel_streams = Vec::new();
-        for _ in 0..BaguaNet::NSTREAMS {
+        for _ in 0..self.nstreams {
             let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
             let (stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
                 Ok(listen) => listen,
@@ -359,6 +364,7 @@ impl BaguaNet {
         let id = self.recv_comm_next_id;
         self.recv_comm_next_id += 1;
         let metrics = self.state.clone();
+        let nstreams = self.nstreams;
         self.recv_comm_map.insert(
             id,
             SocketRecvComm {
@@ -367,7 +373,7 @@ impl BaguaNet {
                     let mut stream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let mut stream = &mut parallel_streams[stream_id];
-                        stream_id = (stream_id + 1) % BaguaNet::NSTREAMS;
+                        stream_id = (stream_id + 1) % nstreams;
 
                         let mut target_nbytes = data.len().to_be_bytes();
                         stream.read_exact(&mut target_nbytes[..]).unwrap();
