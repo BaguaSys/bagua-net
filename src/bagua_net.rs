@@ -382,7 +382,7 @@ impl BaguaNet {
                             data.len()
                         };
 
-                        println!("bucket_size={}", bucket_size);
+                        println!("bucket_size={}, data.len={}, parallel_streams.len={}, task_split_threshold={}", bucket_size, data.len(), parallel_streams.len(), task_split_threshold);
                         for bucket in data.chunks(bucket_size) {
                             state.lock().unwrap().nsubtasks += 1;
                             streams_input[downstream_id].send((bucket, state.clone())).unwrap();
