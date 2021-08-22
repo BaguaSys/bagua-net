@@ -371,6 +371,7 @@ impl BaguaNet {
                         stream.read_exact(&mut target_nbytes[..]).unwrap();
                         // utils::nonblocking_read_exact(&mut stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
+                        println!("target_nbytes={}", target_nbytes);
                         stream.read_exact(&mut data[..target_nbytes]).unwrap();
                         // utils::nonblocking_read_exact(&mut stream, &mut data[..target_nbytes])
                         //     .unwrap();
