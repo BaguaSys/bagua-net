@@ -375,20 +375,10 @@ impl BaguaNet {
                         // utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
                         master_stream.write_all(&send_nbytes[..]).unwrap();
 
-                        let offset: usize = 0;
-                        loop {
-                            let bucket = if offset + comm_bucket_size <= data.len() {
-                                &data[offset..offset + comm_bucket_size]
-                            } else {
-                                &data[offset..]
-                            };
-
-                            streams_input[downstream_id].send((bucket, state.clone()));
+                        for bucket in data.chunks(comm_bucket_size) {
+                            state.lock().unwrap().nsubtasks += 1;
+                            streams_input[downstream_id].send((bucket, state.clone())).unwrap();
                             downstream_id = (downstream_id + 1) % parallel_streams.len();
-
-                            if offset >= data.len() {
-                                break;
-                            }
                         }
                     }
                 })),
@@ -460,9 +450,10 @@ impl BaguaNet {
                         // utils::nonblocking_read_exact(&mut stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
-                        for buff in data[..target_nbytes].chunks_mut(comm_bucket_size) {
+                        for bucket in data[..target_nbytes].chunks_mut(comm_bucket_size) {
+                            state.lock().unwrap().nsubtasks += 1;
                             streams_input[downstream_id]
-                                .send((&mut buff[..], state.clone()))
+                                .send((&mut bucket[..], state.clone()))
                                 .unwrap();
                             downstream_id = (downstream_id + 1) % parallel_streams.len();
                         }
