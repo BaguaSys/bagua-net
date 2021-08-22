@@ -384,6 +384,8 @@ impl BaguaNet {
                             streams_input[downstream_id].send((bucket, state.clone())).unwrap();
                             downstream_id = (downstream_id + 1) % parallel_streams.len();
                         }
+
+                        state.lock().unwrap().completed_subtasks += 1;
                     }
                 })),
             },
@@ -465,6 +467,7 @@ impl BaguaNet {
                             downstream_id = (downstream_id + 1) % parallel_streams.len();
                         }
 
+                        state.lock().unwrap().completed_subtasks += 1;
                         // let mut xdata = &mut data[..target_nbytes];
                         // while target_nbytes >= 0 {
                         //     let buff = if comm_bucket_size <= target_nbytes {
