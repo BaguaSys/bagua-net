@@ -220,14 +220,6 @@ pub struct Buffer {
     len: usize,
 }
 
-extern "C" fn free_buf(buf: Buffer) {
-    let s = unsafe { std::slice::from_raw_parts_mut(buf.data, buf.len) };
-    let s = s.as_mut_ptr();
-    unsafe {
-        Box::from_raw(s);
-    }
-}
-
 /// Error code
 /// 0: success
 /// -1: null pointer

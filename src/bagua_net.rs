@@ -45,13 +45,13 @@ pub struct SocketListenComm {
 #[derive(Clone)]
 pub struct SocketSendComm {
     pub tcp_sender: Arc<std::thread::JoinHandle<()>>,
-    pub msg_sender: flume::Sender<(Bytes, Arc<Mutex<(bool, usize)>>)>,
+    pub msg_sender: flume::Sender<(&'static [u8], Arc<Mutex<RequestState>>)>,
 }
 
 #[derive(Clone)]
 pub struct SocketRecvComm {
     pub tcp_sender: Arc<std::thread::JoinHandle<()>>,
-    pub msg_sender: flume::Sender<(&'static mut [u8], Arc<Mutex<(bool, usize)>>)>,
+    pub msg_sender: flume::Sender<(&'static mut [u8], Arc<Mutex<RequestState>>)>,
 }
 
 #[derive(Error, Debug)]
@@ -65,13 +65,19 @@ pub enum BaguaNetError {
 }
 
 pub struct SocketSendRequest {
-    pub state: Arc<Mutex<(bool, usize)>>,
+    pub state: Arc<Mutex<RequestState>>,
     pub trace_span: opentelemetry::global::BoxedSpan,
 }
 
 pub struct SocketRecvRequest {
-    pub state: Arc<Mutex<(bool, usize)>>,
+    pub state: Arc<Mutex<RequestState>>,
     pub trace_span: opentelemetry::global::BoxedSpan,
+}
+
+pub struct RequestState {
+    pub nsubtasks: usize,
+    pub completed_subtasks: usize,
+    pub nbytes_transferred: usize,
 }
 
 pub enum SocketRequest {
@@ -111,6 +117,7 @@ pub struct BaguaNet {
     pub rank: i32,
     state: Arc<AppState>,
     nstreams: usize,
+    comm_bucket_size: usize,
 }
 
 impl BaguaNet {
@@ -216,6 +223,10 @@ impl BaguaNet {
                 .unwrap_or("1".to_owned())
                 .parse()
                 .unwrap(),
+            comm_bucket_size: std::env::var("BAGUA_NET_COMM_BUCKET")
+                .unwrap_or("1048576".to_owned())
+                .parse()
+                .unwrap(),
         })
     }
 
@@ -289,8 +300,9 @@ impl BaguaNet {
         socket_handle: SocketHandle,
     ) -> Result<SocketSendCommID, BaguaNetError> {
         let mut parallel_streams = Vec::new();
+        let mut streams_input = Vec::new();
         for _ in 0..self.nstreams {
-            let stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+            let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
                 Ok(stream) => stream,
                 Err(err) => {
                     tracing::warn!(
@@ -307,32 +319,77 @@ impl BaguaNet {
             // stream.set_nodelay(true).unwrap();
             // stream.set_nonblocking(true).unwrap();
 
-            parallel_streams.push(stream);
+            let (msg_sender, msg_receiver) =
+                flume::unbounded::<(&'static [u8], Arc<Mutex<RequestState>>)>();
+            let metrics = self.state.clone();
+            parallel_streams.push(std::thread::spawn(move || {
+                for (data, state) in msg_receiver.iter() {
+                    // let send_nbytes = data.len().to_be_bytes();
+
+                    // // utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
+                    // stream.write_all(&send_nbytes[..]).unwrap();
+                    // utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
+                    stream.write_all(&data[..]).unwrap();
+
+                    metrics.isend_nbytes_gauge.record(data.len() as u64);
+                    match state.lock() {
+                        Ok(mut state) => {
+                            state.completed_subtasks += 1;
+                            state.nbytes_transferred += data.len();
+                        }
+                        Err(poisoned) => {
+                            tracing::warn!("{:?}", poisoned);
+                        }
+                    };
+                }
+            }));
+            streams_input.push(msg_sender);
         }
 
+        let mut master_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+            Ok(master_stream) => master_stream,
+            Err(err) => {
+                tracing::warn!(
+                    "net::TcpStream::connect failed, err={:?}, socket_handle={:?}",
+                    err,
+                    socket_handle
+                );
+                return Err(BaguaNetError::TCPError(format!(
+                    "socket_handle={:?}, err={:?}",
+                    socket_handle, err
+                )));
+            }
+        };
         let (msg_sender, msg_receiver) = flume::unbounded();
+        let comm_bucket_size = self.comm_bucket_size;
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
-        let metrics = self.state.clone();
-        let nstreams = self.nstreams;
         self.send_comm_map.insert(
             id,
             SocketSendComm {
                 msg_sender: msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
-                    let mut stream_id = 0;
+                    let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let send_nbytes = data.len().to_be_bytes();
-
-                        let mut stream = &mut parallel_streams[stream_id];
-                        stream_id = (stream_id + 1) % nstreams;
                         // utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
-                        stream.write_all(&send_nbytes[..]).unwrap();
-                        // utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
-                        stream.write_all(&data[..]).unwrap();
+                        master_stream.write_all(&send_nbytes[..]).unwrap();
 
-                        metrics.isend_nbytes_gauge.record(data.len() as u64);
-                        (*state.lock().unwrap()) = (true, data.len());
+                        let offset: usize = 0;
+                        loop {
+                            let bucket = if offset + comm_bucket_size <= data.len() {
+                                &data[offset..offset + comm_bucket_size]
+                            } else {
+                                &data[offset..]
+                            };
+
+                            streams_input[downstream_id].send((bucket, state.clone()));
+                            downstream_id = (downstream_id + 1) % parallel_streams.len();
+
+                            if offset >= data.len() {
+                                break;
+                            }
+                        }
                     }
                 })),
             },
@@ -345,10 +402,11 @@ impl BaguaNet {
         &mut self,
         listen_comm_id: SocketListenCommID,
     ) -> Result<SocketRecvCommID, BaguaNetError> {
+        let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
         let mut parallel_streams = Vec::new();
+        let mut streams_input = Vec::new();
         for _ in 0..self.nstreams {
-            let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
-            let (stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
+            let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
                 Ok(listen) => listen,
                 Err(err) => {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
@@ -357,33 +415,71 @@ impl BaguaNet {
             // stream.set_nodelay(true).unwrap();
             // stream.set_nonblocking(true).unwrap();
 
-            parallel_streams.push(stream);
+            let (msg_sender, msg_receiver) =
+                flume::unbounded::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
+            let metrics = self.state.clone();
+            parallel_streams.push(std::thread::spawn(move || {
+                for (data, state) in msg_receiver.iter() {
+                    stream.read_exact(&mut data[..]).unwrap();
+
+                    metrics.irecv_nbytes_gauge.record(data.len() as u64);
+                    match state.lock() {
+                        Ok(mut state) => {
+                            state.completed_subtasks += 1;
+                            state.nbytes_transferred += data.len();
+                        }
+                        Err(poisoned) => {
+                            tracing::warn!("{:?}", poisoned);
+                        }
+                    };
+                }
+            }));
+            streams_input.push(msg_sender);
         }
 
+        let (mut main_stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
+            Ok(listen) => listen,
+            Err(err) => {
+                return Err(BaguaNetError::TCPError(format!("{:?}", err)));
+            }
+        };
+
         let (msg_sender, msg_receiver) = flume::unbounded();
+        let comm_bucket_size = self.comm_bucket_size;
         let id = self.recv_comm_next_id;
         self.recv_comm_next_id += 1;
-        let metrics = self.state.clone();
-        let nstreams = self.nstreams;
         self.recv_comm_map.insert(
             id,
             SocketRecvComm {
                 msg_sender: msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
-                    let mut stream_id = 0;
+                    let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
-                        let mut stream = &mut parallel_streams[stream_id];
-                        stream_id = (stream_id + 1) % nstreams;
-
                         let mut target_nbytes = data.len().to_be_bytes();
-                        stream.read_exact(&mut target_nbytes[..]).unwrap();
+                        main_stream.read_exact(&mut target_nbytes[..]).unwrap();
                         // utils::nonblocking_read_exact(&mut stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
-                        stream.read_exact(&mut data[..target_nbytes]).unwrap();
-                        // utils::nonblocking_read_exact(&mut stream, &mut data[..target_nbytes])
-                        //     .unwrap();
-                        metrics.irecv_nbytes_gauge.record(target_nbytes as u64);
-                        (*state.lock().unwrap()) = (true, target_nbytes);
+
+                        for buff in data[..target_nbytes].chunks_mut(comm_bucket_size) {
+                            streams_input[downstream_id]
+                                .send((&mut buff[..], state.clone()))
+                                .unwrap();
+                            downstream_id = (downstream_id + 1) % parallel_streams.len();
+                        }
+
+                        // let mut xdata = &mut data[..target_nbytes];
+                        // while target_nbytes >= 0 {
+                        //     let buff = if comm_bucket_size <= target_nbytes {
+                        //         let (left, right) = xdata.split_at_mut(comm_bucket_size);
+                        //         xdata = right;
+                        //         left
+                        //     } else {
+                        //         xdata
+                        //     };
+
+                        //     streams_input[downstream_id].send((&mut buff[..], state.clone()));
+                        //     downstream_id = (downstream_id + 1) % parallel_streams.len();
+                        // }
                     }
                 })),
             },
@@ -409,7 +505,11 @@ impl BaguaNet {
         span.set_attribute(KeyValue::new("nbytes", data.len() as i64));
 
         self.socket_request_next_id += 1;
-        let task_state = Arc::new(Mutex::new((false, 0)));
+        let task_state = Arc::new(Mutex::new(RequestState {
+            nsubtasks: 1,
+            completed_subtasks: 0,
+            nbytes_transferred: 0,
+        }));
         self.socket_request_map.insert(
             id,
             SocketRequest::SendRequest(SocketSendRequest {
@@ -418,10 +518,7 @@ impl BaguaNet {
             }),
         );
 
-        send_comm
-            .msg_sender
-            .send((Bytes::from_static(data), task_state))
-            .unwrap();
+        send_comm.msg_sender.send((data, task_state)).unwrap();
 
         Ok(id)
     }
@@ -442,7 +539,11 @@ impl BaguaNet {
         span.set_attribute(KeyValue::new("id", id as i64));
 
         self.socket_request_next_id += 1;
-        let task_state = Arc::new(Mutex::new((false, 0)));
+        let task_state = Arc::new(Mutex::new(RequestState {
+            nsubtasks: 1,
+            completed_subtasks: 0,
+            nbytes_transferred: 0,
+        }));
         self.socket_request_map.insert(
             id,
             SocketRequest::RecvRequest(SocketRecvRequest {
@@ -459,24 +560,28 @@ impl BaguaNet {
     pub fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
         let request = self.socket_request_map.get_mut(&request_id).unwrap();
         let ret = match request {
-            SocketRequest::SendRequest(send_req) => Ok(*send_req.state.lock().unwrap()),
-            SocketRequest::RecvRequest(recv_req) => Ok(*recv_req.state.lock().unwrap()),
+            SocketRequest::SendRequest(send_req) => {
+                let state = send_req.state.lock().unwrap();
+                let task_completed = state.nsubtasks == state.completed_subtasks;
+
+                if task_completed {
+                    send_req.trace_span.end();
+                }
+                Ok((task_completed, state.nbytes_transferred))
+            }
+            SocketRequest::RecvRequest(recv_req) => {
+                let state = recv_req.state.lock().unwrap();
+                let task_completed = state.nsubtasks == state.completed_subtasks;
+
+                if task_completed {
+                    recv_req.trace_span.end();
+                }
+                Ok((task_completed, state.nbytes_transferred))
+            }
         };
 
         if let Ok(ret) = ret {
             if ret.0 {
-                if self.trace_on_flag {
-                    let request = self.socket_request_map.get_mut(&request_id).unwrap();
-                    match request {
-                        SocketRequest::SendRequest(send_req) => {
-                            send_req.trace_span.end();
-                        }
-                        SocketRequest::RecvRequest(recv_req) => {
-                            recv_req.trace_span.end();
-                        }
-                    };
-                }
-
                 self.socket_request_map.remove(&request_id).unwrap();
             }
         }
