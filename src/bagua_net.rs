@@ -330,7 +330,6 @@ impl BaguaNet {
                     // // utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
                     // stream.write_all(&send_nbytes[..]).unwrap();
                     // utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
-                    println!("write {}", data.len());
                     stream.write_all(&data[..]).unwrap();
 
                     metrics.isend_nbytes_gauge.record(data.len() as u64);
@@ -343,7 +342,6 @@ impl BaguaNet {
                             tracing::warn!("{:?}", poisoned);
                         }
                     };
-                    println!("after write state={:?}", state.lock().unwrap());
                 }
             }));
             streams_input.push(msg_sender);
@@ -376,7 +374,6 @@ impl BaguaNet {
                     for (data, state) in msg_receiver.iter() {
                         let send_nbytes = data.len().to_be_bytes();
                         // utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
-                        println!("write nbytes {}", send_nbytes.len());
                         master_stream.write_all(&send_nbytes[..]).unwrap();
 
                         for bucket in data.chunks(comm_bucket_size) {
@@ -416,7 +413,6 @@ impl BaguaNet {
             let metrics = self.state.clone();
             parallel_streams.push(std::thread::spawn(move || {
                 for (data, state) in msg_receiver.iter() {
-                    println!("read {}", data.len());
                     stream.read_exact(&mut data[..]).unwrap();
 
                     metrics.irecv_nbytes_gauge.record(data.len() as u64);
@@ -429,7 +425,6 @@ impl BaguaNet {
                             tracing::warn!("{:?}", poisoned);
                         }
                     };
-                    println!("after read state={:?}", state.lock().unwrap());
                 }
             }));
             streams_input.push(msg_sender);
@@ -454,7 +449,6 @@ impl BaguaNet {
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let mut target_nbytes = data.len().to_be_bytes();
-                        println!("read nbytes {}", target_nbytes.len());
                         main_stream.read_exact(&mut target_nbytes[..]).unwrap();
                         // utils::nonblocking_read_exact(&mut stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
