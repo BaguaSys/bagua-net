@@ -181,7 +181,7 @@ impl BaguaNet {
                     let metric_families = prom_exporter.registry().gather();
                     prometheus::push_metrics(
                         "BaguaNet",
-                        prometheus::labels! { "rank".to_owned() => rank, },
+                        prometheus::labels! { "rank".to_owned() => rank.to_string(), },
                         &address,
                         metric_families,
                         Some(prometheus::BasicAuthentication {
