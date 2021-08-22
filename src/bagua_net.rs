@@ -152,7 +152,7 @@ impl BaguaNet {
         ));
 
         let prom_exporter = opentelemetry_prometheus::exporter()
-            .with_default_histogram_boundaries(vec![16., 256., 4096., 65536., 1048576., 16777216.])
+            .with_default_histogram_boundaries(vec![1024., 1048576., 10485760., 104857600.])
             .init();
         let meter = opentelemetry::global::meter("bagua-net");
         let state = Arc::new(AppState {
