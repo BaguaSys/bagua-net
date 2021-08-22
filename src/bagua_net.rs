@@ -376,17 +376,20 @@ impl BaguaNet {
                         // utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
                         master_stream.write_all(&send_nbytes[..]).unwrap();
 
-                        let bucket_size = if data.len() > task_split_threshold {
-                            data.len() + (parallel_streams.len() - 1) / parallel_streams.len()
-                        } else {
-                            data.len()
-                        };
-
-                        println!("bucket_size={}, data.len={}, parallel_streams.len={}, task_split_threshold={}", bucket_size, data.len(), parallel_streams.len(), task_split_threshold);
-                        for bucket in data.chunks(bucket_size) {
-                            state.lock().unwrap().nsubtasks += 1;
-                            streams_input[downstream_id].send((bucket, state.clone())).unwrap();
-                            downstream_id = (downstream_id + 1) % parallel_streams.len();
+                        if data.len() != 0 {
+                            let bucket_size = if data.len() > task_split_threshold {
+                                data.len() + (parallel_streams.len() - 1) / parallel_streams.len()
+                            } else {
+                                data.len()
+                            };
+                            // println!("bucket_size={}, data.len={}, parallel_streams.len={}, task_split_threshold={}", bucket_size, data.len(), parallel_streams.len(), task_split_threshold);
+                            for bucket in data.chunks(bucket_size) {
+                                state.lock().unwrap().nsubtasks += 1;
+                                streams_input[downstream_id]
+                                    .send((bucket, state.clone()))
+                                    .unwrap();
+                                downstream_id = (downstream_id + 1) % parallel_streams.len();
+                            }
                         }
 
                         state.lock().unwrap().completed_subtasks += 1;
@@ -460,21 +463,25 @@ impl BaguaNet {
                         // utils::nonblocking_read_exact(&mut stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
-                        let bucket_size = if target_nbytes > task_split_threshold && target_nbytes > parallel_streams.len() {
-                            target_nbytes + (parallel_streams.len() - 1) / parallel_streams.len()
-                        } else {
-                            target_nbytes
-                        };
+                        if target_nbytes != 0 {
+                            let bucket_size = if target_nbytes > task_split_threshold
+                                && target_nbytes > parallel_streams.len()
+                            {
+                                target_nbytes
+                                    + (parallel_streams.len() - 1) / parallel_streams.len()
+                            } else {
+                                target_nbytes
+                            };
 
-                        println!("bucket_size={}", bucket_size);
-                        for bucket in data[..target_nbytes].chunks_mut(bucket_size) {
-                            state.lock().unwrap().nsubtasks += 1;
-                            streams_input[downstream_id]
-                                .send((&mut bucket[..], state.clone()))
-                                .unwrap();
-                            downstream_id = (downstream_id + 1) % parallel_streams.len();
+                            // println!("bucket_size={}", bucket_size);
+                            for bucket in data[..target_nbytes].chunks_mut(bucket_size) {
+                                state.lock().unwrap().nsubtasks += 1;
+                                streams_input[downstream_id]
+                                    .send((&mut bucket[..], state.clone()))
+                                    .unwrap();
+                                downstream_id = (downstream_id + 1) % parallel_streams.len();
+                            }
                         }
-
                         state.lock().unwrap().completed_subtasks += 1;
                         // let mut xdata = &mut data[..target_nbytes];
                         // while target_nbytes >= 0 {
