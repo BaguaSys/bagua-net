@@ -377,7 +377,9 @@ impl BaguaNet {
                         master_stream.write_all(&send_nbytes[..]).unwrap();
 
                         if data.len() != 0 {
-                            let bucket_size = if data.len() > task_split_threshold {
+                            let bucket_size = if data.len() >= task_split_threshold
+                                && data.len() > parallel_streams.len()
+                            {
                                 data.len() + (parallel_streams.len() - 1) / parallel_streams.len()
                             } else {
                                 data.len()
@@ -464,7 +466,7 @@ impl BaguaNet {
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
                         if target_nbytes != 0 {
-                            let bucket_size = if target_nbytes > task_split_threshold
+                            let bucket_size = if target_nbytes >= task_split_threshold
                                 && target_nbytes > parallel_streams.len()
                             {
                                 target_nbytes
