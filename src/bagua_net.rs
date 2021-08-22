@@ -86,6 +86,8 @@ struct AppState {
     exporter: opentelemetry_prometheus::PrometheusExporter,
     isend_nbytes_gauge: BoundValueRecorder<'static, u64>,
     irecv_nbytes_gauge: BoundValueRecorder<'static, u64>,
+    // isend_nbytes_gauge: BoundValueRecorder<'static, u64>,
+    // irecv_nbytes_gauge: BoundValueRecorder<'static, u64>,
     uploader: std::thread::JoinHandle<()>,
 }
 
@@ -113,7 +115,7 @@ pub struct BaguaNet {
 impl BaguaNet {
     const DEFAULT_SOCKET_MAX_COMMS: i32 = 65536;
     const DEFAULT_LISTEN_BACKLOG: i32 = 16384;
-    const NSTREAMS: usize = 1;
+    const NSTREAMS: usize = 2;
 
     pub fn new() -> Result<BaguaNet, BaguaNetError> {
         let rank: i32 = std::env::var("RANK")
@@ -152,7 +154,7 @@ impl BaguaNet {
         ));
 
         let prom_exporter = opentelemetry_prometheus::exporter()
-            .with_default_histogram_boundaries(vec![1024., 1048576., 10485760., 104857600., 1073741824., 10737418240.])
+            .with_default_histogram_boundaries(vec![16., 1024., 4096., 1048576.])
             .init();
         let meter = opentelemetry::global::meter("bagua-net");
         let state = Arc::new(AppState {
