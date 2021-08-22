@@ -74,6 +74,7 @@ pub struct SocketRecvRequest {
     pub trace_span: opentelemetry::global::BoxedSpan,
 }
 
+#[derive(Debug)]
 pub struct RequestState {
     pub nsubtasks: usize,
     pub completed_subtasks: usize,
@@ -342,6 +343,7 @@ impl BaguaNet {
                             tracing::warn!("{:?}", poisoned);
                         }
                     };
+                    println!("after write state={:?}", state.lock().unwrap());
                 }
             }));
             streams_input.push(msg_sender);
@@ -425,6 +427,7 @@ impl BaguaNet {
                             tracing::warn!("{:?}", poisoned);
                         }
                     };
+                    println!("after read state={:?}", state.lock().unwrap());
                 }
             }));
             streams_input.push(msg_sender);
