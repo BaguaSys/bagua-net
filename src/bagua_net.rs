@@ -382,6 +382,7 @@ impl BaguaNet {
                             data.len()
                         };
 
+                        println!("bucket_size={}", bucket_size);
                         for bucket in data.chunks(bucket_size) {
                             state.lock().unwrap().nsubtasks += 1;
                             streams_input[downstream_id].send((bucket, state.clone())).unwrap();
@@ -459,12 +460,13 @@ impl BaguaNet {
                         // utils::nonblocking_read_exact(&mut stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
-                        let bucket_size = if target_nbytes > task_split_threshold {
+                        let bucket_size = if target_nbytes > task_split_threshold && target_nbytes > parallel_streams.len() {
                             target_nbytes + (parallel_streams.len() - 1) / parallel_streams.len()
                         } else {
                             target_nbytes
                         };
 
+                        println!("bucket_size={}", bucket_size);
                         for bucket in data[..target_nbytes].chunks_mut(bucket_size) {
                             state.lock().unwrap().nsubtasks += 1;
                             streams_input[downstream_id]
