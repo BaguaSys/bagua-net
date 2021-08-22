@@ -376,7 +376,7 @@ impl BaguaNet {
                         stream.read_exact(&mut data[..target_nbytes]).unwrap();
                         // utils::nonblocking_read_exact(&mut stream, &mut data[..target_nbytes])
                         //     .unwrap();
-                        metrics.irecv_nbytes_gauge.record(data.len() as u64);
+                        metrics.irecv_nbytes_gauge.record(target_nbytes as u64);
                         (*state.lock().unwrap()) = (true, target_nbytes);
                     }
                 })),
