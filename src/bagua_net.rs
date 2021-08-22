@@ -151,7 +151,9 @@ impl BaguaNet {
             format!("{:?}", utils::find_interfaces()),
         ));
 
-        let prom_exporter = opentelemetry_prometheus::exporter().init();
+        let prom_exporter = opentelemetry_prometheus::exporter()
+            .with_default_histogram_boundaries(vec![16., 256., 4096., 65536., 1048576., 16777216.])
+            .init();
         let meter = opentelemetry::global::meter("bagua-net");
         let state = Arc::new(AppState {
             exporter: prom_exporter.clone(),
@@ -166,13 +168,9 @@ impl BaguaNet {
             uploader: std::thread::spawn(move || {
                 let prometheus_addr =
                     std::env::var("BAGUA_NET_PROMETHEUS_ADDRESS").unwrap_or_default();
-                println!("prometheus_addr={}", prometheus_addr);
                 let (user, pass, address) = match utils::parse_user_pass_and_addr(&prometheus_addr)
                 {
-                    Some(ret) => {
-                        println!("parse prometheus_addr success, ret={:?}", ret);
-                        ret
-                    }
+                    Some(ret) => ret,
                     None => return,
                 };
 
@@ -189,9 +187,9 @@ impl BaguaNet {
                             password: pass.clone(),
                         }),
                     ) {
-                        Ok(_) => {},
+                        Ok(_) => {}
                         Err(err) => {
-                            println!("{:?}", err);
+                            tracing::warn!("{:?}", err);
                         }
                     }
                 }

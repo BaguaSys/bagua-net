@@ -73,7 +73,7 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
                 let pci_path = format!("/sys/class/net/{}/device", ifaddr.interface_name);
                 let pci_path: String = match std::fs::canonicalize(pci_path) {
                     Ok(pci_path) => pci_path.to_str().unwrap_or("").to_string(),
-                    Err(err) => "".to_string(),
+                    Err(_) => "".to_string(),
                 };
 
                 socket_devs.push(NCCLSocketDev {
@@ -83,7 +83,7 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
                 })
             }
             None => {
-                println!(
+                tracing::warn!(
                     "interface {} with unsupported address family",
                     ifaddr.interface_name
                 );
@@ -181,7 +181,6 @@ pub fn parse_user_pass_and_addr(raw_url: &str) -> Option<(String, String, String
     let re = regex::Regex::new(r"^(?:([^:]+):([^@]+)@)?(\S+)$").unwrap();
     match re.captures(raw_url) {
         Some(caps) => {
-            println!("caps={:?}", caps);
             let username = match caps.get(1) {
                 Some(username) => username.as_str().to_owned(),
                 None => Default::default(),
