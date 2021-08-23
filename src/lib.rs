@@ -187,7 +187,7 @@ pub extern "C" fn bagua_net_c_connect(
             },
         ) {
             Ok(id) => id,
-            Err(err) => return -3,
+            Err(_err) => return -3,
         }
     }
     return 0;

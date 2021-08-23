@@ -191,25 +191,29 @@ impl BaguaNet {
 
         let meter = opentelemetry::global::meter("bagua-net");
         let isend_nbytes_per_second_clone = isend_nbytes_per_second.clone();
-        meter.f64_value_observer(
-            "isend_nbytes_per_second",
-            move |res: ObserverResult<f64>| {
-                res.observe(
-                    *isend_nbytes_per_second_clone.lock().unwrap(),
-                    HANDLER_ALL.as_ref(),
-                );
-            },
-        );
+        meter
+            .f64_value_observer(
+                "isend_nbytes_per_second",
+                move |res: ObserverResult<f64>| {
+                    res.observe(
+                        *isend_nbytes_per_second_clone.lock().unwrap(),
+                        HANDLER_ALL.as_ref(),
+                    );
+                },
+            )
+            .init();
         let isend_percentage_of_effective_time_clone = isend_nbytes_per_second.clone();
-        meter.f64_value_observer(
-            "isend_percentage_of_effective_time",
-            move |res: ObserverResult<f64>| {
-                res.observe(
-                    *isend_percentage_of_effective_time_clone.lock().unwrap(),
-                    HANDLER_ALL.as_ref(),
-                );
-            },
-        );
+        meter
+            .f64_value_observer(
+                "isend_percentage_of_effective_time",
+                move |res: ObserverResult<f64>| {
+                    res.observe(
+                        *isend_percentage_of_effective_time_clone.lock().unwrap(),
+                        HANDLER_ALL.as_ref(),
+                    );
+                },
+            )
+            .init();
         let state = Arc::new(AppState {
             exporter: prom_exporter.clone(),
             isend_nbytes_gauge: meter
