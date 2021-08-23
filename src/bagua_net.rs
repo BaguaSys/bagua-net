@@ -202,7 +202,7 @@ impl BaguaNet {
                 },
             )
             .init();
-        let isend_percentage_of_effective_time_clone = isend_nbytes_per_second.clone();
+        let isend_percentage_of_effective_time_clone = isend_percentage_of_effective_time.clone();
         meter
             .f64_value_observer(
                 "isend_percentage_of_effective_time",
