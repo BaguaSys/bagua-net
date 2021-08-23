@@ -4,7 +4,7 @@ extern crate lazy_static;
 mod bagua_net;
 mod utils;
 
-use bagua_net::{BaguaNet, NCCLNetProperties};
+use bagua_net::{BaguaNet, NCCLNetProperties, SocketHandle};
 use ffi_convert::{AsRust, CDrop, CReprOf};
 use libc;
 use std::sync::{Arc, Mutex};
