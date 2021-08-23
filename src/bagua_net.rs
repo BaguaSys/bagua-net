@@ -378,7 +378,6 @@ impl BaguaNet {
             parallel_streams.push(std::thread::spawn(move || {
                 let out_timer = std::time::Instant::now();
                 let mut sum_in_time = 0.;
-                let mut counter = 0;
                 for (data, state) in msg_receiver.iter() {
                     // let send_nbytes = data.len().to_be_bytes();
 
@@ -389,15 +388,6 @@ impl BaguaNet {
                     stream.write_all(&data[..]).unwrap();
                     let dur = in_timer.elapsed().as_secs_f64();
                     sum_in_time += dur;
-
-                    if counter % 10000 == 0 {
-                        println!(
-                            "isend_nbytes_per_second={}, isend_percentage_of_effective_time={}",
-                            data.len() as f64 / dur,
-                            sum_in_time / out_timer.elapsed().as_secs_f64()
-                        );
-                    }
-                    counter += 1;
 
                     *metrics.isend_nbytes_per_second.lock().unwrap() = data.len() as f64 / dur;
                     *metrics.isend_percentage_of_effective_time.lock().unwrap() =
