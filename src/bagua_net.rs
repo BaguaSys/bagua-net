@@ -1,9 +1,8 @@
 use crate::utils;
 use crate::utils::NCCLSocketDev;
-use bytes::Bytes;
 use nix::sys::socket::{InetAddr, SockAddr};
 use opentelemetry::{
-    metrics::BoundValueRecorder,
+    metrics::{BoundValueRecorder, ObserverResult},
     trace::{Span, TraceContextExt, Tracer},
     KeyValue,
 };
@@ -93,6 +92,8 @@ struct AppState {
     exporter: opentelemetry_prometheus::PrometheusExporter,
     isend_nbytes_gauge: BoundValueRecorder<'static, u64>,
     irecv_nbytes_gauge: BoundValueRecorder<'static, u64>,
+    isend_nbytes_per_second: Arc<Mutex<f64>>,
+    isend_percentage_of_effective_time: Arc<Mutex<f64>>,
     // isend_nbytes_gauge: BoundValueRecorder<'static, u64>,
     // irecv_nbytes_gauge: BoundValueRecorder<'static, u64>,
     uploader: std::thread::JoinHandle<()>,
@@ -161,10 +162,54 @@ impl BaguaNet {
             format!("{:?}", utils::find_interfaces()),
         ));
 
+        // let descriptor = Descriptor::new(
+        //     "test".to_string(),
+        //     "test",
+        //     None,
+        //     InstrumentKind::Counter,
+        //     NumberKind::I64,
+        // );
+        // let aggregator = SumAggregator::default();
+        // let val = Number::from(12_i64);
+        // aggregator.update(&val, &descriptor)?;
+        // let wrapped_aggregator: Arc<dyn Aggregator + Send + Sync> = Arc::new(aggregator);
+        // let record = record(
+        //     &descriptor,
+        //     &label_set,
+        //     &resource,
+        //     Some(&wrapped_aggregator),
+        //     start_time.into(),
+        //     end_time.into(),
+        // );
+
         let prom_exporter = opentelemetry_prometheus::exporter()
             .with_default_histogram_boundaries(vec![16., 1024., 4096., 1048576.])
             .init();
+
+        let isend_nbytes_per_second = Arc::new(Mutex::new(0.));
+        let isend_percentage_of_effective_time = Arc::new(Mutex::new(0.));
+
         let meter = opentelemetry::global::meter("bagua-net");
+        let isend_nbytes_per_second_clone = isend_nbytes_per_second.clone();
+        meter.f64_value_observer(
+            "isend_nbytes_per_second",
+            move |res: ObserverResult<f64>| {
+                res.observe(
+                    *isend_nbytes_per_second_clone.lock().unwrap(),
+                    HANDLER_ALL.as_ref(),
+                );
+            },
+        );
+        let isend_percentage_of_effective_time_clone = isend_nbytes_per_second.clone();
+        meter.f64_value_observer(
+            "isend_percentage_of_effective_time",
+            move |res: ObserverResult<f64>| {
+                res.observe(
+                    *isend_percentage_of_effective_time_clone.lock().unwrap(),
+                    HANDLER_ALL.as_ref(),
+                );
+            },
+        );
         let state = Arc::new(AppState {
             exporter: prom_exporter.clone(),
             isend_nbytes_gauge: meter
@@ -175,6 +220,8 @@ impl BaguaNet {
                 .u64_value_recorder("irecv_nbytes")
                 .init()
                 .bind(HANDLER_ALL.as_ref()),
+            isend_nbytes_per_second: isend_nbytes_per_second,
+            isend_percentage_of_effective_time: isend_percentage_of_effective_time,
             uploader: std::thread::spawn(move || {
                 let prometheus_addr =
                     std::env::var("BAGUA_NET_PROMETHEUS_ADDRESS").unwrap_or_default();
@@ -323,14 +370,24 @@ impl BaguaNet {
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static [u8], Arc<Mutex<RequestState>>)>();
             let metrics = self.state.clone();
+            // TODO: Consider dynamically assigning tasks to make the least stream full
             parallel_streams.push(std::thread::spawn(move || {
+                let out_timer = std::time::Instant::now();
+                let mut sum_in_time = 0.;
                 for (data, state) in msg_receiver.iter() {
                     // let send_nbytes = data.len().to_be_bytes();
 
                     // // utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
                     // stream.write_all(&send_nbytes[..]).unwrap();
                     // utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
+                    let in_timer = std::time::Instant::now();
                     stream.write_all(&data[..]).unwrap();
+                    let dur = in_timer.elapsed().as_secs_f64();
+                    sum_in_time += dur;
+
+                    *metrics.isend_nbytes_per_second.lock().unwrap() = data.len() as f64 / dur;
+                    *metrics.isend_percentage_of_effective_time.lock().unwrap() =
+                        sum_in_time / out_timer.elapsed().as_secs_f64();
 
                     metrics.isend_nbytes_gauge.record(data.len() as u64);
                     match state.lock() {

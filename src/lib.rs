@@ -4,7 +4,7 @@ extern crate lazy_static;
 mod bagua_net;
 mod utils;
 
-use bagua_net::{BaguaNet, NCCLNetProperties, SocketHandle};
+use bagua_net::{BaguaNet, NCCLNetProperties};
 use ffi_convert::{AsRust, CDrop, CReprOf};
 use libc;
 use std::sync::{Arc, Mutex};
@@ -141,7 +141,7 @@ pub extern "C" fn bagua_net_c_listen(
     unsafe {
         let (handle, id) = match (*ptr).inner.lock().unwrap().listen(dev_id as usize) {
             Ok(result) => result,
-            Err(err) => return -3,
+            Err(_err) => return -3,
         };
         let (sockaddr, _) = handle.addr.as_ffi_pair();
         (*socket_handle).sockaddr = *sockaddr;

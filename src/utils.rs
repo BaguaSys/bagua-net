@@ -30,22 +30,22 @@ pub struct NCCLSocketDev {
 }
 
 pub fn find_interfaces() -> Vec<NCCLSocketDev> {
-    let NCCL_SOCKET_FAMILY = std::env::var("NCCL_SOCKET_FAMILY")
+    let nccl_socket_family = std::env::var("NCCL_SOCKET_FAMILY")
         .unwrap_or("-1".to_string())
         .parse::<i32>()
         .unwrap_or(-1);
-    let NCCL_SOCKET_IFNAME =
+    let nccl_socket_ifname =
         std::env::var("NCCL_SOCKET_IFNAME").unwrap_or("^docker,lo".to_string());
     // TODO @shjwudp: support parse sockaddr from NCCL_COMM_ID
 
     let mut search_not = Vec::<&str>::new();
     let mut search_exact = Vec::<&str>::new();
-    if NCCL_SOCKET_IFNAME.starts_with("^") {
-        search_not = NCCL_SOCKET_IFNAME[1..].split(",").collect();
-    } else if NCCL_SOCKET_IFNAME.starts_with("=") {
-        search_exact = NCCL_SOCKET_IFNAME[1..].split(",").collect();
+    if nccl_socket_ifname.starts_with("^") {
+        search_not = nccl_socket_ifname[1..].split(",").collect();
+    } else if nccl_socket_ifname.starts_with("=") {
+        search_exact = nccl_socket_ifname[1..].split(",").collect();
     } else {
-        search_exact = NCCL_SOCKET_IFNAME.split(",").collect();
+        search_exact = nccl_socket_ifname.split(",").collect();
     }
 
     let mut socket_devs = Vec::<NCCLSocketDev>::new();
@@ -98,7 +98,7 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
         .filter({
             |socket_dev| -> bool {
                 let (sockaddr, _) = socket_dev.addr.as_ffi_pair();
-                if NCCL_SOCKET_FAMILY != -1 && sockaddr.sa_family as i32 != NCCL_SOCKET_FAMILY {
+                if nccl_socket_family != -1 && sockaddr.sa_family as i32 != nccl_socket_family {
                     return false;
                 }
 
