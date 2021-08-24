@@ -368,8 +368,8 @@ impl BaguaNet {
                     )));
                 }
             };
-            // stream.set_nodelay(true).unwrap();
-            // stream.set_nonblocking(true).unwrap();
+            stream.set_nodelay(true).unwrap();
+            stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static [u8], Arc<Mutex<RequestState>>)>();
@@ -385,7 +385,8 @@ impl BaguaNet {
                     // stream.write_all(&send_nbytes[..]).unwrap();
                     // utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
                     let in_timer = std::time::Instant::now();
-                    stream.write_all(&data[..]).unwrap();
+                    utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
+                    // stream.write_all(&data[..]).unwrap();
                     let dur = in_timer.elapsed().as_secs_f64();
                     sum_in_time += dur;
 
@@ -478,15 +479,16 @@ impl BaguaNet {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
                 }
             };
-            // stream.set_nodelay(true).unwrap();
-            // stream.set_nonblocking(true).unwrap();
+            stream.set_nodelay(true).unwrap();
+            stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
             let metrics = self.state.clone();
             parallel_streams.push(std::thread::spawn(move || {
                 for (data, state) in msg_receiver.iter() {
-                    stream.read_exact(&mut data[..]).unwrap();
+                    utils::nonblocking_read_exact(&mut stream, &mut data[..]).unwrap();
+                    // stream.read_exact(&mut data[..]).unwrap();
 
                     metrics.irecv_nbytes_gauge.record(data.len() as u64);
                     match state.lock() {
