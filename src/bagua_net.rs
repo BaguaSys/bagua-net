@@ -384,18 +384,18 @@ impl BaguaNet {
                     // // utils::nonblocking_write_all(&mut stream, &send_nbytes[..]).unwrap();
                     // stream.write_all(&send_nbytes[..]).unwrap();
                     // utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
-                    // let in_timer = std::time::Instant::now();
+                    let in_timer = std::time::Instant::now();
                     utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
                     // stream.write_all(&data[..]).unwrap();
 
-                    // let dur = in_timer.elapsed().as_secs_f64();
-                    // sum_in_time += dur;
+                    let dur = in_timer.elapsed().as_secs_f64();
+                    sum_in_time += dur;
 
-                    // *metrics.isend_nbytes_per_second.lock().unwrap() = data.len() as f64 / dur;
-                    // *metrics.isend_percentage_of_effective_time.lock().unwrap() =
-                    //     sum_in_time / out_timer.elapsed().as_secs_f64();
+                    *metrics.isend_nbytes_per_second.lock().unwrap() = data.len() as f64 / dur;
+                    *metrics.isend_percentage_of_effective_time.lock().unwrap() =
+                        sum_in_time / out_timer.elapsed().as_secs_f64();
 
-                    // metrics.isend_nbytes_gauge.record(data.len() as u64);
+                    metrics.isend_nbytes_gauge.record(data.len() as u64);
                     match state.lock() {
                         Ok(mut state) => {
                             state.completed_subtasks += 1;
@@ -494,7 +494,7 @@ impl BaguaNet {
                     utils::nonblocking_read_exact(&mut stream, &mut data[..]).unwrap();
                     // stream.read_exact(&mut data[..]).unwrap();
 
-                    // metrics.irecv_nbytes_gauge.record(data.len() as u64);
+                    metrics.irecv_nbytes_gauge.record(data.len() as u64);
                     match state.lock() {
                         Ok(mut state) => {
                             state.completed_subtasks += 1;
