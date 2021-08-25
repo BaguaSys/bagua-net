@@ -44,7 +44,7 @@ mpirun \
 
 ## Benchmark
 
-We tested the performance on the Kuaishou V100 machine and found that the throughput of Bagua-Net allreduce was significantly better than the NCCL tcp. At the same time, we also compared [Google fast-socket](https://cloud.google.com/compute/docs/gpus/optimize-gpus#fast-socket) and found that we also have a slight advantage over him. Here is the [test record](https://gist.github.com/shjwudp/9eb08bbaf46d9b12239aa62a54d35a48).
+We tested the performance on the Kuaishou V100 machine and found that the throughput of Bagua-Net allreduce was significantly better than the NCCL tcp. Here is the [test record](https://gist.github.com/shjwudp/9eb08bbaf46d9b12239aa62a54d35a48).
 
 In the end-to-end test, we have obvious advantages comparing NCCL TCP and google fast-socket. You can reproduce this test result through [this script](https://github.com/BaguaSys/examples/blob/main/benchmark/synthetic_benchmark.py).
 
@@ -78,19 +78,4 @@ Iter #8: 2760.0 img/sec GPU
 Iter #9: 2796.6 img/sec GPU
 Img/sec per GPU: 85.8 +-3.8
 Total img/sec on 32 GPU(s): 2744.9 +-122.3
-
-# VGG16 on 4x8xV100 google-fastsocket
-INFO:Running benchmark...
-INFO:Iter #0: 3798.5 img/sec GPU
-INFO:Iter #1: 3353.8 img/sec GPU
-INFO:Iter #2: 3628.9 img/sec GPU
-INFO:Iter #3: 3062.8 img/sec GPU
-INFO:Iter #4: 3140.2 img/sec GPU
-INFO:Iter #5: 2969.6 img/sec GPU
-INFO:Iter #6: 3475.9 img/sec GPU
-INFO:Iter #7: 2704.0 img/sec GPU
-INFO:Iter #8: 3243.5 img/sec GPU
-INFO:Iter #9: 3082.0 img/sec GPU
-INFO:Img/sec per GPU: 101.4 +-19.0
-INFO:Total img/sec on 32 GPU(s): 3245.9 +-606.7
 ```
