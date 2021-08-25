@@ -81,16 +81,16 @@ Total img/sec on 32 GPU(s): 2744.9 +-122.3
 
 # VGG16 on 4x8xV100 google-fastsocket
 INFO:Running benchmark...
-INFO:Iter #0: 3468.7 img/sec GPU
-INFO:Iter #1: 3067.0 img/sec GPU
-INFO:Iter #2: 3115.0 img/sec GPU
-INFO:Iter #3: 3213.0 img/sec GPU
-INFO:Iter #4: 2575.2 img/sec GPU
-INFO:Iter #5: 3726.2 img/sec GPU
-INFO:Iter #6: 3151.3 img/sec GPU
-INFO:Iter #7: 2880.7 img/sec GPU
-INFO:Iter #8: 2769.8 img/sec GPU
-INFO:Iter #9: 3559.8 img/sec GPU
-INFO:Img/sec per GPU: 98.5 +-20.9
-INFO:Total img/sec on 32 GPU(s): 3152.7 +-667.8
+INFO:Iter #0: 3798.5 img/sec GPU
+INFO:Iter #1: 3353.8 img/sec GPU
+INFO:Iter #2: 3628.9 img/sec GPU
+INFO:Iter #3: 3062.8 img/sec GPU
+INFO:Iter #4: 3140.2 img/sec GPU
+INFO:Iter #5: 2969.6 img/sec GPU
+INFO:Iter #6: 3475.9 img/sec GPU
+INFO:Iter #7: 2704.0 img/sec GPU
+INFO:Iter #8: 3243.5 img/sec GPU
+INFO:Iter #9: 3082.0 img/sec GPU
+INFO:Img/sec per GPU: 101.4 +-19.0
+INFO:Total img/sec on 32 GPU(s): 3245.9 +-606.7
 ```
