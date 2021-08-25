@@ -46,7 +46,7 @@ mpirun \
 
 We tested the performance on the Kuaishou V100 machine and found that the throughput of Bagua-Net allreduce was significantly better than the NCCL tcp. Here is the [test record](https://gist.github.com/shjwudp/9eb08bbaf46d9b12239aa62a54d35a48).
 
-In the end-to-end test, we have obvious advantages comparing NCCL TCP and google fast-socket. You can reproduce this test result through [this script](https://github.com/BaguaSys/examples/blob/main/benchmark/synthetic_benchmark.py).
+In the end-to-end test, we have obvious advantages compare to NCCL TCP. You can reproduce this test result through [this script](https://github.com/BaguaSys/examples/blob/main/benchmark/synthetic_benchmark.py).
 
 ```
 # VGG16 on 4x8xV100 bagua-net
