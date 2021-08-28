@@ -9,7 +9,7 @@ $(PLUGIN_SO): bagua_net.cc
 	$(CXX) $(INC) \
 	-std=c++17 -fPIC -shared \
 	-o $@ $^ \
-	-L ../target/debug -l:libbagua_net.so
+	-l:libbagua_net.so
 
 clean:
 	rm -f $(PLUGIN_SO)
