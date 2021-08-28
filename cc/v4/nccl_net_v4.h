@@ -96,5 +96,3 @@ typedef struct {
   ncclResult_t (*closeColl)(void* collComm);
   ncclResult_t (*closeListen)(void* listenComm);
 } ncclCollNet_v4_t;
-
-#endif // end include guard
