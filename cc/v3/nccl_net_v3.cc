@@ -108,9 +108,9 @@ __hidden ncclResult_t baguaNetRegMr_v3(void *comm, void *data, int size, int typ
     return (type != NCCL_PTR_HOST) ? ncclInternalError : ncclSuccess;
 }
 
-__hidden ncclResult_t baguaNetDeregMr(void *comm, void *mhandle)
+__hidden ncclResult_t baguaNetDeregMr_v3(void *comm, void *mhandle)
 {
-    NCCL_TRACE(NCCL_ALL, "baguaNetDeregMr, comm=%p", comm);
+    NCCL_TRACE(NCCL_ALL, "baguaNetDeregMr_v3, comm=%p", comm);
     return ncclSuccess;
 }
 
@@ -216,7 +216,7 @@ ncclNet_v3_t ncclNetPlugin_v3 = {
     baguaNetConnect_v3,
     baguaNetAccept_v3,
     baguaNetRegMr_v3,
-    baguaNetDeregMr,
+    baguaNetDeregMr_v3,
     baguaNetIsend_v3,
     baguaNetIrecv_v3,
     baguaNetFlush_v3,
