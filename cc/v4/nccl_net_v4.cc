@@ -207,7 +207,7 @@ __hidden ncclResult_t baguaNetCloseListen(void *listenComm)
     return ncclSuccess;
 }
 
-ncclNet_t ncclNetPlugin_v4 = {
+ncclNet_v4_t ncclNetPlugin_v4 = {
     "BaguaNet",
     baguaNetInit,
     baguaNetDevices,
