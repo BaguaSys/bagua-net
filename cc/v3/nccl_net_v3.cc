@@ -10,12 +10,12 @@
 
 #define __hidden __attribute__((visibility("hidden")))
 
-ncclDebugLogger_t NCCL_DEBUG_LOG;
-#define NCCL_TRACE(FLAGS, ...) NCCL_DEBUG_LOG(NCCL_LOG_TRACE, (FLAGS), __func__, __LINE__, __VA_ARGS__)
-#define NCCL_INFO(FLAGS, ...) NCCL_DEBUG_LOG(NCCL_LOG_INFO, (FLAGS), __func__, __LINE__, __VA_ARGS__)
-#define NCCL_WARN(...) NCCL_DEBUG_LOG(NCCL_LOG_WARN, NCCL_ALL, __FILE__, __LINE__, __VA_ARGS__)
+ncclDebugLogger_t NCCL_DEBUG_LOG_V3;
+#define NCCL_TRACE(FLAGS, ...) NCCL_DEBUG_LOG_V3(NCCL_LOG_TRACE, (FLAGS), __func__, __LINE__, __VA_ARGS__)
+#define NCCL_INFO(FLAGS, ...) NCCL_DEBUG_LOG_V3(NCCL_LOG_INFO, (FLAGS), __func__, __LINE__, __VA_ARGS__)
+#define NCCL_WARN(...) NCCL_DEBUG_LOG_V3(NCCL_LOG_WARN, NCCL_ALL, __FILE__, __LINE__, __VA_ARGS__)
 
-void set_properties(ncclNetProperties_v3_t &lhs, NCCLNetPropertiesC &rhs)
+void set_properties_v3(ncclNetProperties_v3_t &lhs, NCCLNetPropertiesC &rhs)
 {
     lhs.name = const_cast<char *>(rhs.name);
     lhs.pciPath = const_cast<char *>(rhs.pci_path);
@@ -28,7 +28,7 @@ void set_properties(ncclNetProperties_v3_t &lhs, NCCLNetPropertiesC &rhs)
 
 __hidden ncclResult_t baguaNetInit_v3(ncclDebugLogger_t logFunction)
 {
-    NCCL_DEBUG_LOG = logFunction;
+    NCCL_DEBUG_LOG_V3 = logFunction;
     BaguaNet::instance();
 
     NCCL_TRACE(NCCL_ALL, "baguaNetInit_v3!");
@@ -57,7 +57,7 @@ __hidden ncclResult_t baguaNetGetProperties_v3(int dev, ncclNetProperties_v3_t *
         NCCL_WARN("baguaNetGetProperties_v3 failed, ret=%d, dev=%d", ret, dev);
         return ncclInternalError;
     }
-    set_properties(*props, inner_props);
+    set_properties_v3(*props, inner_props);
     NCCL_TRACE(NCCL_ALL, "baguaNetGetProperties_v3, dev=%d", dev);
 
     return ncclSuccess;
@@ -123,7 +123,7 @@ __hidden ncclResult_t baguaNetIsend_v3(void *sendComm, void *data, int size, voi
         return ncclInternalError;
     }
     NCCL_TRACE(NCCL_ALL, "baguaNetIsend_v3, sendComm=%p, data=%p, size=%d, request_id=%d",
-              sendComm, data, size, *(uintptr_t *)(*request));
+               sendComm, data, size, *(uintptr_t *)(*request));
 
     return ncclSuccess;
 }
@@ -137,7 +137,7 @@ __hidden ncclResult_t baguaNetIrecv_v3(void *recvComm, void *data, int size, voi
         return ncclInternalError;
     }
     NCCL_TRACE(NCCL_ALL, "baguaNetIrecv_v3, recvComm=%p, data=%p, size=%d, request_id=%d",
-              recvComm, data, size, *(uintptr_t *)(*request));
+               recvComm, data, size, *(uintptr_t *)(*request));
 
     return ncclSuccess;
 }
@@ -166,7 +166,7 @@ __hidden ncclResult_t baguaNetTest_v3(void *request, int *done, int *size)
         NCCL_TRACE(NCCL_ALL, "size=%d", *size);
     }
     NCCL_TRACE(NCCL_ALL, "baguaNetTest_v3, request_id=%d, done=%d, nbytes=%d",
-              *static_cast<uintptr_t *>(request), *done, nbytes);
+               *static_cast<uintptr_t *>(request), *done, nbytes);
 
     return ncclSuccess;
 }

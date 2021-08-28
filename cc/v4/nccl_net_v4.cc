@@ -123,7 +123,7 @@ __hidden ncclResult_t baguaNetIsend(void *sendComm, void *data, int size, void *
         return ncclInternalError;
     }
     NCCL_TRACE(NCCL_ALL, "baguaNetIsend, sendComm=%p, data=%p, size=%d, request_id=%d",
-              sendComm, data, size, *(uintptr_t *)(*request));
+               sendComm, data, size, *(uintptr_t *)(*request));
 
     return ncclSuccess;
 }
@@ -137,7 +137,7 @@ __hidden ncclResult_t baguaNetIrecv(void *recvComm, void *data, int size, void *
         return ncclInternalError;
     }
     NCCL_TRACE(NCCL_ALL, "baguaNetIrecv, recvComm=%p, data=%p, size=%d, request_id=%d",
-              recvComm, data, size, *(uintptr_t *)(*request));
+               recvComm, data, size, *(uintptr_t *)(*request));
 
     return ncclSuccess;
 }
@@ -166,7 +166,7 @@ __hidden ncclResult_t baguaNetTest(void *request, int *done, int *size)
         NCCL_TRACE(NCCL_ALL, "size=%d", *size);
     }
     NCCL_TRACE(NCCL_ALL, "baguaNetTest, request_id=%d, done=%d, nbytes=%d",
-              *static_cast<uintptr_t *>(request), *done, nbytes);
+               *static_cast<uintptr_t *>(request), *done, nbytes);
 
     return ncclSuccess;
 }
