@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <memory>
 #include <vector>
+#include <functional>
 
 struct BaguaNetC;
 
