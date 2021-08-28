@@ -26,7 +26,7 @@ int32_t BaguaNet::get_properties(int32_t dev_id, NCCLNetPropertiesC *props)
         }
     }
 
-    *props = inner_props;
+    *props = *inner_props;
     return 0;
 }
 
