@@ -1,11 +1,12 @@
 NCCL_HOME:=../../build/
 CUDA_HOME:=/usr/local/cuda
-INC:= -I$(NCCL_HOME)/include -I$(CUDA_HOME)/include -I.
+INC:= -I$(NCCL_HOME)/include -I$(CUDA_HOME)/include -I. -I./v4
 PLUGIN_SO:=libnccl-net.so
+NCCL_NET_V4:=./v4/nccl_net_v4.cc
 
 default: $(PLUGIN_SO)
 
-$(PLUGIN_SO): bagua_net.cc
+$(PLUGIN_SO): bagua_net.cc $(NCCL_NET_V4)
 	$(CXX) $(INC) \
 	-std=c++17 -fPIC -shared \
 	-o $@ $^ \
