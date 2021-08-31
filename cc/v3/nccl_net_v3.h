@@ -19,7 +19,7 @@ typedef struct {
   int speed;      // Port speed in Mbps.
   int port;       // Port number.
   int maxComms;   // Maximum number of comms we can create
-}ncclNetProperties_v3_t;
+} ncclNetProperties_v3_t;
 
 typedef struct {
   // Name of the network (mainly for logs)
