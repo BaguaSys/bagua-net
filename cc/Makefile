@@ -18,4 +18,5 @@ test:
 	cargo test --verbose
 
 clean:
-	rm -f $(PLUGIN_SO)
+	cargo clean \
+	&& rm -f $(PLUGIN_SO)
