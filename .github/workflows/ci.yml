@@ -16,7 +16,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Rust build
-      run: cargo build --verbose
-    - name: Rust run tests
-      run: cargo test --verbose
+    - name: Build
+      run: cd cc && make
+    - name: Test
+      run: cd cc && make test
