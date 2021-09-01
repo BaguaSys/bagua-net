@@ -414,7 +414,7 @@ impl BaguaNet {
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let send_nbytes = data.len().to_be_bytes();
-                        if data.len() < 1024 {
+                        if data.len() < 0 {
                             // let mut buf = BytesMut::with_capacity(send_nbytes.len() + data.len());
                             // buf.put(&send_nbytes[..]);
                             // buf.put(&data[..]);
@@ -528,7 +528,7 @@ impl BaguaNet {
 
                         if target_nbytes == 0 {
                             state.lock().unwrap().completed_subtasks += 1;
-                        } else if target_nbytes < 1024 {
+                        } else if target_nbytes < 0 {
                             utils::nonblocking_read_exact(&mut master_stream, &mut data[..target_nbytes]).unwrap();
                             match state.lock() {
                                 Ok(mut state) => {
