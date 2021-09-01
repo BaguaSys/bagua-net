@@ -514,26 +514,25 @@ impl BaguaNet {
                         utils::nonblocking_read_exact(&mut master_stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
-                        if target_nbytes < 1024 {
+                        if target_nbytes == 0 {
+                        } else if target_nbytes < 1024 {
                             utils::nonblocking_read_exact(&mut master_stream, &mut data[..target_nbytes]).unwrap();
                         } else {
-                            if target_nbytes != 0 {
-                                let bucket_size = if target_nbytes >= task_split_threshold
-                                    && target_nbytes > parallel_streams.len()
-                                {
-                                    target_nbytes
-                                        + (parallel_streams.len() - 1) / parallel_streams.len()
-                                } else {
-                                    target_nbytes
-                                };
-    
-                                for bucket in data[..target_nbytes].chunks_mut(bucket_size) {
-                                    state.lock().unwrap().nsubtasks += 1;
-                                    streams_input[downstream_id]
-                                        .send((&mut bucket[..], state.clone()))
-                                        .unwrap();
-                                    downstream_id = (downstream_id + 1) % parallel_streams.len();
-                                }
+                            let bucket_size = if target_nbytes >= task_split_threshold
+                                && target_nbytes > parallel_streams.len()
+                            {
+                                target_nbytes
+                                    + (parallel_streams.len() - 1) / parallel_streams.len()
+                            } else {
+                                target_nbytes
+                            };
+
+                            for bucket in data[..target_nbytes].chunks_mut(bucket_size) {
+                                state.lock().unwrap().nsubtasks += 1;
+                                streams_input[downstream_id]
+                                    .send((&mut bucket[..], state.clone()))
+                                    .unwrap();
+                                downstream_id = (downstream_id + 1) % parallel_streams.len();
                             }
                         }
 
