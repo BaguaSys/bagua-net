@@ -514,7 +514,6 @@ impl BaguaNet {
 
                         if target_nbytes < 1024 {
                             utils::nonblocking_read_exact(&mut master_stream, &mut data[..target_nbytes]).unwrap();
-                            continue;
                         } else {
                             if target_nbytes != 0 {
                                 let bucket_size = if target_nbytes >= task_split_threshold
