@@ -420,7 +420,18 @@ impl BaguaNet {
                             // buf.put(&data[..]);
                             // utils::nonblocking_write_all(&mut master_stream, &buf[..]).unwrap();
                             utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..]).unwrap();
-                            utils::nonblocking_write_all(&mut master_stream, &data[..]).unwrap();
+                            if data.len() != 0 {
+                                utils::nonblocking_write_all(&mut master_stream, &data[..]).unwrap();
+                            }
+                            match state.lock() {
+                                Ok(mut state) => {
+                                    state.completed_subtasks += 1;
+                                    state.nbytes_transferred += data.len();
+                                }
+                                Err(poisoned) => {
+                                    tracing::warn!("{:?}", poisoned);
+                                }
+                            };
                         } else {
                             utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..]).unwrap();
 
@@ -440,9 +451,9 @@ impl BaguaNet {
                                     downstream_id = (downstream_id + 1) % parallel_streams.len();
                                 }
                             }
+                            state.lock().unwrap().completed_subtasks += 1;
                         }
 
-                        state.lock().unwrap().completed_subtasks += 1;
                     }
                 })),
             },
@@ -515,8 +526,18 @@ impl BaguaNet {
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
                         if target_nbytes == 0 {
+                            state.lock().unwrap().completed_subtasks += 1;
                         } else if target_nbytes < 1024 {
                             utils::nonblocking_read_exact(&mut master_stream, &mut data[..target_nbytes]).unwrap();
+                            match state.lock() {
+                                Ok(mut state) => {
+                                    state.completed_subtasks += 1;
+                                    state.nbytes_transferred += target_nbytes;
+                                }
+                                Err(poisoned) => {
+                                    tracing::warn!("{:?}", poisoned);
+                                }
+                            };
                         } else {
                             let bucket_size = if target_nbytes >= task_split_threshold
                                 && target_nbytes > parallel_streams.len()
@@ -534,9 +555,8 @@ impl BaguaNet {
                                     .unwrap();
                                 downstream_id = (downstream_id + 1) % parallel_streams.len();
                             }
+                            state.lock().unwrap().completed_subtasks += 1;
                         }
-
-                        state.lock().unwrap().completed_subtasks += 1;
                     }
                 })),
             },
