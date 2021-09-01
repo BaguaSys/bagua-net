@@ -415,7 +415,7 @@ impl BaguaNet {
                     for (data, state) in msg_receiver.iter() {
                         let send_nbytes = data.len().to_be_bytes();
                         if data.len() < 1024 {
-                            let mut buf = BytesMut::with_capacity(8 + data.len());
+                            let mut buf = BytesMut::with_capacity(send_nbytes.len() + data.len());
                             buf.put(&send_nbytes[..]);
                             buf.put(&data[..]);
                             utils::nonblocking_write_all(&mut master_stream, &buf[..]).unwrap();
