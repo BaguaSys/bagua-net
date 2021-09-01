@@ -524,7 +524,7 @@ impl BaguaNet {
                         let mut target_nbytes = data.len().to_be_bytes();
                         utils::nonblocking_read_exact(&mut master_stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
-                        println!("target_nbytes={}", target_nbytes);
+                        // println!("target_nbytes={}", target_nbytes);
 
                         if target_nbytes == 0 {
                             state.lock().unwrap().completed_subtasks += 1;
