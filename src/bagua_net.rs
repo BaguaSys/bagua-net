@@ -1,5 +1,6 @@
 use crate::utils;
 use crate::utils::NCCLSocketDev;
+use bytes::{BufMut, BytesMut};
 use nix::sys::socket::{InetAddr, SockAddr};
 use opentelemetry::{
     metrics::{BoundValueRecorder, ObserverResult},
@@ -11,7 +12,6 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net;
 use std::sync::{Arc, Mutex};
-use bytes::{BytesMut, BufMut};
 use thiserror::Error;
 
 const NCCL_PTR_HOST: i32 = 1;
@@ -93,6 +93,7 @@ struct AppState {
     exporter: opentelemetry_prometheus::PrometheusExporter,
     isend_nbytes_gauge: BoundValueRecorder<'static, u64>,
     irecv_nbytes_gauge: BoundValueRecorder<'static, u64>,
+    isend_per_second: Arc<Mutex<f64>>,
     isend_nbytes_per_second: Arc<Mutex<f64>>,
     isend_percentage_of_effective_time: Arc<Mutex<f64>>,
     // isend_nbytes_gauge: BoundValueRecorder<'static, u64>,
@@ -126,6 +127,7 @@ pub struct BaguaNet {
 impl BaguaNet {
     const DEFAULT_SOCKET_MAX_COMMS: i32 = 65536;
     const DEFAULT_LISTEN_BACKLOG: i32 = 16384;
+    const DEFAULT_N_CONTROL_STREAM: i32 = 2;
 
     pub fn new() -> Result<BaguaNet, BaguaNetError> {
         let rank: i32 = std::env::var("RANK")
@@ -169,6 +171,7 @@ impl BaguaNet {
 
         let isend_nbytes_per_second = Arc::new(Mutex::new(0.));
         let isend_percentage_of_effective_time = Arc::new(Mutex::new(0.));
+        let isend_per_second = Arc::new(Mutex::new(0.));
 
         let meter = opentelemetry::global::meter("bagua-net");
         let isend_nbytes_per_second_clone = isend_nbytes_per_second.clone();
@@ -182,6 +185,15 @@ impl BaguaNet {
                     );
                 },
             )
+            .init();
+        let isend_per_second_clone = isend_per_second.clone();
+        meter
+            .f64_value_observer("isend_per_second", move |res: ObserverResult<f64>| {
+                res.observe(
+                    *isend_per_second_clone.lock().unwrap(),
+                    HANDLER_ALL.as_ref(),
+                );
+            })
             .init();
         let isend_percentage_of_effective_time_clone = isend_percentage_of_effective_time.clone();
         meter
@@ -205,6 +217,7 @@ impl BaguaNet {
                 .u64_value_recorder("irecv_nbytes")
                 .init()
                 .bind(HANDLER_ALL.as_ref()),
+                isend_per_second: isend_per_second,
             isend_nbytes_per_second: isend_nbytes_per_second,
             isend_percentage_of_effective_time: isend_percentage_of_effective_time,
             uploader: std::thread::spawn(move || {
@@ -400,28 +413,34 @@ impl BaguaNet {
             }
         };
         master_stream.set_nodelay(true).unwrap();
-        master_stream.set_nonblocking(true).unwrap();
+        // master_stream.set_nonblocking(true).unwrap();
 
         let (msg_sender, msg_receiver) = flume::unbounded();
         let task_split_threshold = self.task_split_threshold;
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
+        let metrics = self.state.clone();
         self.send_comm_map.insert(
             id,
             SocketSendComm {
                 msg_sender: msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
+                    let out_timer = std::time::Instant::now();
+                    let mut sum_in_time = 0.;
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
+                        let in_timer = std::time::Instant::now();
                         let send_nbytes = data.len().to_be_bytes();
                         if data.len() < 0 {
                             // let mut buf = BytesMut::with_capacity(send_nbytes.len() + data.len());
                             // buf.put(&send_nbytes[..]);
                             // buf.put(&data[..]);
                             // utils::nonblocking_write_all(&mut master_stream, &buf[..]).unwrap();
-                            utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..]).unwrap();
+                            utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..])
+                                .unwrap();
                             if data.len() != 0 {
-                                utils::nonblocking_write_all(&mut master_stream, &data[..]).unwrap();
+                                utils::nonblocking_write_all(&mut master_stream, &data[..])
+                                    .unwrap();
                             }
                             match state.lock() {
                                 Ok(mut state) => {
@@ -433,13 +452,15 @@ impl BaguaNet {
                                 }
                             };
                         } else {
-                            utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..]).unwrap();
+                            master_stream.write_all(&send_nbytes[..]).unwrap();
+                            // utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..]).unwrap();
 
                             if data.len() != 0 {
                                 let bucket_size = if data.len() >= task_split_threshold
                                     && data.len() > parallel_streams.len()
                                 {
-                                    data.len() + (parallel_streams.len() - 1) / parallel_streams.len()
+                                    data.len()
+                                        + (parallel_streams.len() - 1) / parallel_streams.len()
                                 } else {
                                     data.len()
                                 };
@@ -454,6 +475,12 @@ impl BaguaNet {
                             state.lock().unwrap().completed_subtasks += 1;
                         }
 
+                        let dur = in_timer.elapsed().as_secs_f64();
+                        sum_in_time += dur;
+
+                        *metrics.isend_per_second.lock().unwrap() = 1. / dur;
+                        *metrics.isend_percentage_of_effective_time.lock().unwrap() =
+                            sum_in_time / out_timer.elapsed().as_secs_f64();
                     }
                 })),
             },
@@ -508,7 +535,7 @@ impl BaguaNet {
             }
         };
         master_stream.set_nodelay(true).unwrap();
-        master_stream.set_nonblocking(true).unwrap();
+        // master_stream.set_nonblocking(true).unwrap();
 
         let (msg_sender, msg_receiver) = flume::unbounded();
         let task_split_threshold = self.task_split_threshold;
@@ -522,14 +549,19 @@ impl BaguaNet {
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let mut target_nbytes = data.len().to_be_bytes();
-                        utils::nonblocking_read_exact(&mut master_stream, &mut target_nbytes[..]).unwrap();
+                        master_stream.read_exact(&mut target_nbytes[..]).unwrap();
+                        // utils::nonblocking_read_exact(&mut master_stream, &mut target_nbytes[..]).unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
                         // println!("target_nbytes={}", target_nbytes);
 
                         if target_nbytes == 0 {
                             state.lock().unwrap().completed_subtasks += 1;
                         } else if target_nbytes < 0 {
-                            utils::nonblocking_read_exact(&mut master_stream, &mut data[..target_nbytes]).unwrap();
+                            utils::nonblocking_read_exact(
+                                &mut master_stream,
+                                &mut data[..target_nbytes],
+                            )
+                            .unwrap();
                             match state.lock() {
                                 Ok(mut state) => {
                                     state.completed_subtasks += 1;
