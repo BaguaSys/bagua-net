@@ -144,7 +144,7 @@ pub fn nonblocking_write_all(stream: &mut std::net::TcpStream, mut buf: &[u8]) -
                     || e.kind() == io::ErrorKind::WouldBlock => {}
             Err(e) => return Err(e),
         }
-        std::thread::yield_now();
+        // std::thread::yield_now();
     }
     Ok(())
 }
