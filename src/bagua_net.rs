@@ -362,8 +362,8 @@ impl BaguaNet {
                     )));
                 }
             };
-            stream.set_nodelay(true).unwrap();
-            stream.set_nonblocking(true).unwrap();
+            // stream.set_nodelay(true).unwrap();
+            // stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static [u8], Arc<Mutex<RequestState>>)>();
@@ -379,7 +379,8 @@ impl BaguaNet {
                 // let mut sum_in_time = 0.;
                 for (data, state) in msg_receiver.iter() {
                     // let in_timer = std::time::Instant::now();
-                    utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
+                    // utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
+                    stream.write_all(&data[..]).unwrap();
 
                     // let dur = in_timer.elapsed().as_secs_f64();
                     // sum_in_time += dur;
@@ -417,8 +418,8 @@ impl BaguaNet {
                 )));
             }
         };
-        master_stream.set_nodelay(true).unwrap();
-        master_stream.set_nonblocking(true).unwrap();
+        // master_stream.set_nodelay(true).unwrap();
+        // master_stream.set_nonblocking(true).unwrap();
 
         let (msg_sender, msg_receiver) = flume::unbounded();
         let task_split_threshold = self.task_split_threshold;
@@ -462,9 +463,9 @@ impl BaguaNet {
                                 }
                             };
                         } else {
-                            // master_stream.write_all(&send_nbytes[..]).unwrap();
-                            utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..])
-                                .unwrap();
+                            master_stream.write_all(&send_nbytes[..]).unwrap();
+                            // utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..])
+                            //     .unwrap();
 
                             if data.len() != 0 {
                                 let bucket_size = if data.len() >= task_split_threshold
@@ -514,8 +515,8 @@ impl BaguaNet {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
                 }
             };
-            stream.set_nodelay(true).unwrap();
-            stream.set_nonblocking(true).unwrap();
+            // stream.set_nodelay(true).unwrap();
+            // stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
@@ -527,7 +528,8 @@ impl BaguaNet {
                     std::thread::current().id()
                 );
                 for (data, state) in msg_receiver.iter() {
-                    utils::nonblocking_read_exact(&mut stream, &mut data[..]).unwrap();
+                    // utils::nonblocking_read_exact(&mut stream, &mut data[..]).unwrap();
+                    stream.read_exact(&mut data[..]).unwrap();
 
                     metrics.irecv_nbytes_gauge.record(data.len() as u64);
                     match state.lock() {
@@ -550,8 +552,8 @@ impl BaguaNet {
                 return Err(BaguaNetError::TCPError(format!("{:?}", err)));
             }
         };
-        master_stream.set_nodelay(true).unwrap();
-        master_stream.set_nonblocking(true).unwrap();
+        // master_stream.set_nodelay(true).unwrap();
+        // master_stream.set_nonblocking(true).unwrap();
 
         let (msg_sender, msg_receiver) = flume::unbounded();
         let task_split_threshold = self.task_split_threshold;
@@ -570,9 +572,9 @@ impl BaguaNet {
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let mut target_nbytes = data.len().to_be_bytes();
-                        // master_stream.read_exact(&mut target_nbytes[..]).unwrap();
-                        utils::nonblocking_read_exact(&mut master_stream, &mut target_nbytes[..])
-                            .unwrap();
+                        master_stream.read_exact(&mut target_nbytes[..]).unwrap();
+                        // utils::nonblocking_read_exact(&mut master_stream, &mut target_nbytes[..])
+                        //     .unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
                         // println!("target_nbytes={}", target_nbytes);
 
