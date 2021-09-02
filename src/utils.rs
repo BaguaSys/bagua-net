@@ -165,7 +165,7 @@ pub fn nonblocking_read_exact(
                     || e.kind() == io::ErrorKind::WouldBlock => {}
             Err(e) => return Err(e),
         }
-        std::thread::yield_now();
+        // std::thread::yield_now();
     }
     if !buf.is_empty() {
         Err(io::Error::new(
