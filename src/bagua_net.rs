@@ -217,7 +217,7 @@ impl BaguaNet {
                 .u64_value_recorder("irecv_nbytes")
                 .init()
                 .bind(HANDLER_ALL.as_ref()),
-                isend_per_second: isend_per_second,
+            isend_per_second: isend_per_second,
             isend_nbytes_per_second: isend_nbytes_per_second,
             isend_percentage_of_effective_time: isend_percentage_of_effective_time,
             uploader: std::thread::spawn(move || {
@@ -370,6 +370,11 @@ impl BaguaNet {
             let metrics = self.state.clone();
             // TODO: Consider dynamically assigning tasks to make the least stream full
             parallel_streams.push(std::thread::spawn(move || {
+                println!(
+                    "bagua-net sendstream pid={:?} tid={:?}",
+                    std::process::id(),
+                    std::thread::current().id()
+                );
                 // let out_timer = std::time::Instant::now();
                 // let mut sum_in_time = 0.;
                 for (data, state) in msg_receiver.iter() {
@@ -425,6 +430,11 @@ impl BaguaNet {
             SocketSendComm {
                 msg_sender: msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
+                    println!(
+                        "bagua-net SendComm pid={:?} tid={:?}",
+                        std::process::id(),
+                        std::thread::current().id()
+                    );
                     let out_timer = std::time::Instant::now();
                     let mut sum_in_time = 0.;
                     let mut downstream_id = 0;
@@ -453,7 +463,8 @@ impl BaguaNet {
                             };
                         } else {
                             // master_stream.write_all(&send_nbytes[..]).unwrap();
-                            utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..]).unwrap();
+                            utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..])
+                                .unwrap();
 
                             if data.len() != 0 {
                                 let bucket_size = if data.len() >= task_split_threshold
@@ -510,6 +521,11 @@ impl BaguaNet {
                 flume::unbounded::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
             let metrics = self.state.clone();
             parallel_streams.push(std::thread::spawn(move || {
+                println!(
+                    "bagua-net recvstream pid={:?} tid={:?}",
+                    std::process::id(),
+                    std::thread::current().id()
+                );
                 for (data, state) in msg_receiver.iter() {
                     utils::nonblocking_read_exact(&mut stream, &mut data[..]).unwrap();
 
@@ -546,11 +562,17 @@ impl BaguaNet {
             SocketRecvComm {
                 msg_sender: msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
+                    println!(
+                        "bagua-net SocketRecvComm pid={:?} tid={:?}",
+                        std::process::id(),
+                        std::thread::current().id()
+                    );
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let mut target_nbytes = data.len().to_be_bytes();
                         // master_stream.read_exact(&mut target_nbytes[..]).unwrap();
-                        utils::nonblocking_read_exact(&mut master_stream, &mut target_nbytes[..]).unwrap();
+                        utils::nonblocking_read_exact(&mut master_stream, &mut target_nbytes[..])
+                            .unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
                         // println!("target_nbytes={}", target_nbytes);
 
