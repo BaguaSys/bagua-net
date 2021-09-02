@@ -362,7 +362,7 @@ impl BaguaNet {
                     )));
                 }
             };
-            // stream.set_nodelay(true).unwrap();
+            stream.set_nodelay(true).unwrap();
             // stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, msg_receiver) =
@@ -418,7 +418,7 @@ impl BaguaNet {
                 )));
             }
         };
-        // master_stream.set_nodelay(true).unwrap();
+        master_stream.set_nodelay(true).unwrap();
         // master_stream.set_nonblocking(true).unwrap();
 
         let (msg_sender, msg_receiver) = flume::unbounded();
@@ -515,7 +515,7 @@ impl BaguaNet {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
                 }
             };
-            // stream.set_nodelay(true).unwrap();
+            stream.set_nodelay(true).unwrap();
             // stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, msg_receiver) =
@@ -552,7 +552,7 @@ impl BaguaNet {
                 return Err(BaguaNetError::TCPError(format!("{:?}", err)));
             }
         };
-        // master_stream.set_nodelay(true).unwrap();
+        master_stream.set_nodelay(true).unwrap();
         // master_stream.set_nonblocking(true).unwrap();
 
         let (msg_sender, msg_receiver) = flume::unbounded();
