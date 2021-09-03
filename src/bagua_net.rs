@@ -434,7 +434,7 @@ impl BaguaNet {
                 println!("go write target_nbytes");
                 master_stream.write_all(&send_nbytes[..]).await.unwrap();
                 master_stream.flush().await.unwrap();
-                println!("write_all target_nbytes={}", data.len());
+                println!("write_all target_nbytes={}, peer={:?}", data.len(), master_stream.peer_addr().unwrap());
 
                 if data.len() != 0 {
                     let bucket_size = if data.len() >= task_split_threshold
@@ -540,7 +540,7 @@ impl BaguaNet {
             let mut downstream_id = 0;
             for (data, state) in msg_receiver.iter() {
                 let mut target_nbytes = data.len().to_be_bytes();
-                println!("ready to read_exact");
+                println!("ready to read_exact, addr={:?}", master_stream.local_addr().unwrap());
                 master_stream
                     .read_exact(&mut target_nbytes[..])
                     .await
