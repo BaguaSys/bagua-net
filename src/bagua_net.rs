@@ -370,6 +370,11 @@ impl BaguaNet {
             // let metrics = self.state.clone();
             // TODO: Consider dynamically assigning tasks to make the least stream full
             self.tokio_rt.spawn(async move {
+                println!(
+                    "bagua-net sendstream pid={:?} tid={:?}",
+                    std::process::id(),
+                    std::thread::current().id()
+                );
                 let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
                 stream.set_nodelay(true).unwrap();
 
@@ -387,38 +392,6 @@ impl BaguaNet {
                     };
                 }
             });
-            // parallel_streams.push(std::thread::spawn(move || {
-            //     println!(
-            //         "bagua-net sendstream pid={:?} tid={:?}",
-            //         std::process::id(),
-            //         std::thread::current().id()
-            //     );
-            //     // let out_timer = std::time::Instant::now();
-            //     // let mut sum_in_time = 0.;
-            //     for (data, state) in msg_receiver.iter() {
-            //         // let in_timer = std::time::Instant::now();
-            //         utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
-            //         // stream.write_all(&data[..]).unwrap();
-
-            //         // let dur = in_timer.elapsed().as_secs_f64();
-            //         // sum_in_time += dur;
-
-            //         // *metrics.isend_nbytes_per_second.lock().unwrap() = data.len() as f64 / dur;
-            //         // *metrics.isend_percentage_of_effective_time.lock().unwrap() =
-            //         //     sum_in_time / out_timer.elapsed().as_secs_f64();
-
-            //         // metrics.isend_nbytes_gauge.record(data.len() as u64);
-            //         match state.lock() {
-            //             Ok(mut state) => {
-            //                 state.completed_subtasks += 1;
-            //                 state.nbytes_transferred += data.len();
-            //             }
-            //             Err(poisoned) => {
-            //                 tracing::warn!("{:?}", poisoned);
-            //             }
-            //         };
-            //     }
-            // }));
             streams_input.push(msg_sender);
         }
 
@@ -569,7 +542,7 @@ impl BaguaNet {
                     .await
                     .unwrap();
                 let target_nbytes = usize::from_be_bytes(target_nbytes);
-                // println!("target_nbytes={}", target_nbytes);
+                println!("target_nbytes={}", target_nbytes);
 
                 if target_nbytes == 0 {
                     state.lock().unwrap().completed_subtasks += 1;
