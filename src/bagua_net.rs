@@ -431,7 +431,9 @@ impl BaguaNet {
             for (data, state) in msg_receiver.iter() {
                 let in_timer = std::time::Instant::now();
                 let send_nbytes = data.len().to_be_bytes();
+                println!("go write target_nbytes");
                 master_stream.write_all(&send_nbytes[..]).await.unwrap();
+                println!("write_all target_nbytes={}", data.len());
 
                 if data.len() != 0 {
                     let bucket_size = if data.len() >= task_split_threshold
