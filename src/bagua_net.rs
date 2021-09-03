@@ -433,6 +433,7 @@ impl BaguaNet {
                 let send_nbytes = data.len().to_be_bytes();
                 println!("go write target_nbytes");
                 master_stream.write_all(&send_nbytes[..]).await.unwrap();
+                master_stream.flush().await.unwrap();
                 println!("write_all target_nbytes={}", data.len());
 
                 if data.len() != 0 {
