@@ -433,7 +433,6 @@ impl BaguaNet {
                 let send_nbytes = data.len().to_be_bytes();
                 println!("go write target_nbytes");
                 master_stream.write_all(&send_nbytes[..]).await.unwrap();
-                master_stream.flush().await.unwrap();
                 println!("write_all target_nbytes={}, peer={:?}", data.len(), master_stream.peer_addr().unwrap());
 
                 if data.len() != 0 {
@@ -495,8 +494,9 @@ impl BaguaNet {
                     std::process::id(),
                     std::thread::current().id()
                 );
+                let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
                 for (data, state) in msg_receiver.iter() {
-                    stream.read_exact(&mut data[..]).unwrap();
+                    stream.read_exact(&mut data[..]).await.unwrap();
                     // stream.read_exact(&mut data[..]).unwrap();
 
                     metrics.irecv_nbytes_gauge.record(data.len() as u64);
