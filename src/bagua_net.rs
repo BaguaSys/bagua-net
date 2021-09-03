@@ -539,6 +539,7 @@ impl BaguaNet {
             let mut downstream_id = 0;
             for (data, state) in msg_receiver.iter() {
                 let mut target_nbytes = data.len().to_be_bytes();
+                println!("ready to read_exact");
                 master_stream
                     .read_exact(&mut target_nbytes[..])
                     .await
