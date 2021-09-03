@@ -13,6 +13,7 @@ use std::io::{Read, Write};
 use std::net;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const NCCL_PTR_HOST: i32 = 1;
 const NCCL_PTR_CUDA: i32 = 2;
@@ -44,13 +45,11 @@ pub struct SocketListenComm {
 // TODO: make Rotating communicator
 #[derive(Clone)]
 pub struct SocketSendComm {
-    pub tcp_sender: Arc<std::thread::JoinHandle<()>>,
     pub msg_sender: flume::Sender<(&'static [u8], Arc<Mutex<RequestState>>)>,
 }
 
 #[derive(Clone)]
 pub struct SocketRecvComm {
-    pub tcp_sender: Arc<std::thread::JoinHandle<()>>,
     pub msg_sender: flume::Sender<(&'static mut [u8], Arc<Mutex<RequestState>>)>,
 }
 
@@ -122,6 +121,7 @@ pub struct BaguaNet {
     state: Arc<AppState>,
     nstreams: usize,
     task_split_threshold: usize,
+    tokio_rt: tokio::runtime::Runtime,
 }
 
 impl BaguaNet {
@@ -273,6 +273,7 @@ impl BaguaNet {
                 .unwrap_or("1048576".to_owned())
                 .parse()
                 .unwrap(),
+            tokio_rt: tokio::runtime::Runtime::new().unwrap(),
         })
     }
 
@@ -345,7 +346,6 @@ impl BaguaNet {
         _dev_id: usize,
         socket_handle: SocketHandle,
     ) -> Result<SocketSendCommID, BaguaNetError> {
-        let mut parallel_streams = Vec::new();
         let mut streams_input = Vec::new();
         for _ in 0..self.nstreams {
             let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
@@ -367,29 +367,15 @@ impl BaguaNet {
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static [u8], Arc<Mutex<RequestState>>)>();
-            let metrics = self.state.clone();
+            // let metrics = self.state.clone();
             // TODO: Consider dynamically assigning tasks to make the least stream full
-            parallel_streams.push(std::thread::spawn(move || {
-                println!(
-                    "bagua-net sendstream pid={:?} tid={:?}",
-                    std::process::id(),
-                    std::thread::current().id()
-                );
-                // let out_timer = std::time::Instant::now();
-                // let mut sum_in_time = 0.;
+            self.tokio_rt.spawn(async move {
+                let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
+                stream.set_nodelay(true).unwrap();
+
                 for (data, state) in msg_receiver.iter() {
-                    // let in_timer = std::time::Instant::now();
-                    utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
-                    // stream.write_all(&data[..]).unwrap();
+                    stream.write_all(&data[..]).await.unwrap();
 
-                    // let dur = in_timer.elapsed().as_secs_f64();
-                    // sum_in_time += dur;
-
-                    // *metrics.isend_nbytes_per_second.lock().unwrap() = data.len() as f64 / dur;
-                    // *metrics.isend_percentage_of_effective_time.lock().unwrap() =
-                    //     sum_in_time / out_timer.elapsed().as_secs_f64();
-
-                    // metrics.isend_nbytes_gauge.record(data.len() as u64);
                     match state.lock() {
                         Ok(mut state) => {
                             state.completed_subtasks += 1;
@@ -400,7 +386,39 @@ impl BaguaNet {
                         }
                     };
                 }
-            }));
+            });
+            // parallel_streams.push(std::thread::spawn(move || {
+            //     println!(
+            //         "bagua-net sendstream pid={:?} tid={:?}",
+            //         std::process::id(),
+            //         std::thread::current().id()
+            //     );
+            //     // let out_timer = std::time::Instant::now();
+            //     // let mut sum_in_time = 0.;
+            //     for (data, state) in msg_receiver.iter() {
+            //         // let in_timer = std::time::Instant::now();
+            //         utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
+            //         // stream.write_all(&data[..]).unwrap();
+
+            //         // let dur = in_timer.elapsed().as_secs_f64();
+            //         // sum_in_time += dur;
+
+            //         // *metrics.isend_nbytes_per_second.lock().unwrap() = data.len() as f64 / dur;
+            //         // *metrics.isend_percentage_of_effective_time.lock().unwrap() =
+            //         //     sum_in_time / out_timer.elapsed().as_secs_f64();
+
+            //         // metrics.isend_nbytes_gauge.record(data.len() as u64);
+            //         match state.lock() {
+            //             Ok(mut state) => {
+            //                 state.completed_subtasks += 1;
+            //                 state.nbytes_transferred += data.len();
+            //             }
+            //             Err(poisoned) => {
+            //                 tracing::warn!("{:?}", poisoned);
+            //             }
+            //         };
+            //     }
+            // }));
             streams_input.push(msg_sender);
         }
 
@@ -426,76 +444,51 @@ impl BaguaNet {
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
         let metrics = self.state.clone();
+        let send_comm = SocketSendComm { msg_sender: msg_sender };
+        self.tokio_rt.spawn(async move {
+            println!(
+                "bagua-net SendComm pid={:?} tid={:?}",
+                std::process::id(),
+                std::thread::current().id()
+            );
+            let mut master_stream = tokio::net::TcpStream::from_std(master_stream).unwrap();
+            let out_timer = std::time::Instant::now();
+            let mut sum_in_time = 0.;
+            let mut downstream_id = 0;
+            for (data, state) in msg_receiver.iter() {
+                let in_timer = std::time::Instant::now();
+                let send_nbytes = data.len().to_be_bytes();
+                master_stream.write_all(&send_nbytes[..]).await.unwrap();
+
+                if data.len() != 0 {
+                    let bucket_size = if data.len() >= task_split_threshold
+                        && data.len() > streams_input.len()
+                    {
+                        data.len() + (streams_input.len() - 1) / streams_input.len()
+                    } else {
+                        data.len()
+                    };
+                    for bucket in data.chunks(bucket_size) {
+                        state.lock().unwrap().nsubtasks += 1;
+                        streams_input[downstream_id]
+                            .send((bucket, state.clone()))
+                            .unwrap();
+                        downstream_id = (downstream_id + 1) % streams_input.len();
+                    }
+                }
+                state.lock().unwrap().completed_subtasks += 1;
+
+                let dur = in_timer.elapsed().as_secs_f64();
+                sum_in_time += dur;
+
+                *metrics.isend_per_second.lock().unwrap() = 1. / dur;
+                *metrics.isend_percentage_of_effective_time.lock().unwrap() =
+                    sum_in_time / out_timer.elapsed().as_secs_f64();
+            }
+        });
         self.send_comm_map.insert(
             id,
-            SocketSendComm {
-                msg_sender: msg_sender,
-                tcp_sender: Arc::new(std::thread::spawn(move || {
-                    println!(
-                        "bagua-net SendComm pid={:?} tid={:?}",
-                        std::process::id(),
-                        std::thread::current().id()
-                    );
-                    let out_timer = std::time::Instant::now();
-                    let mut sum_in_time = 0.;
-                    let mut downstream_id = 0;
-                    for (data, state) in msg_receiver.iter() {
-                        let in_timer = std::time::Instant::now();
-                        let send_nbytes = data.len().to_be_bytes();
-                        if data.len() < 0 {
-                            // let mut buf = BytesMut::with_capacity(send_nbytes.len() + data.len());
-                            // buf.put(&send_nbytes[..]);
-                            // buf.put(&data[..]);
-                            // utils::nonblocking_write_all(&mut master_stream, &buf[..]).unwrap();
-                            utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..])
-                                .unwrap();
-                            if data.len() != 0 {
-                                utils::nonblocking_write_all(&mut master_stream, &data[..])
-                                    .unwrap();
-                            }
-                            match state.lock() {
-                                Ok(mut state) => {
-                                    state.completed_subtasks += 1;
-                                    state.nbytes_transferred += data.len();
-                                }
-                                Err(poisoned) => {
-                                    tracing::warn!("{:?}", poisoned);
-                                }
-                            };
-                        } else {
-                            // master_stream.write_all(&send_nbytes[..]).unwrap();
-                            utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..])
-                                .unwrap();
-
-                            if data.len() != 0 {
-                                let bucket_size = if data.len() >= task_split_threshold
-                                    && data.len() > parallel_streams.len()
-                                {
-                                    data.len()
-                                        + (parallel_streams.len() - 1) / parallel_streams.len()
-                                } else {
-                                    data.len()
-                                };
-                                for bucket in data.chunks(bucket_size) {
-                                    state.lock().unwrap().nsubtasks += 1;
-                                    streams_input[downstream_id]
-                                        .send((bucket, state.clone()))
-                                        .unwrap();
-                                    downstream_id = (downstream_id + 1) % parallel_streams.len();
-                                }
-                            }
-                            state.lock().unwrap().completed_subtasks += 1;
-                        }
-
-                        let dur = in_timer.elapsed().as_secs_f64();
-                        sum_in_time += dur;
-
-                        *metrics.isend_per_second.lock().unwrap() = 1. / dur;
-                        *metrics.isend_percentage_of_effective_time.lock().unwrap() =
-                            sum_in_time / out_timer.elapsed().as_secs_f64();
-                    }
-                })),
-            },
+            send_comm,
         );
 
         Ok(id)
@@ -506,7 +499,6 @@ impl BaguaNet {
         listen_comm_id: SocketListenCommID,
     ) -> Result<SocketRecvCommID, BaguaNetError> {
         let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
-        let mut parallel_streams = Vec::new();
         let mut streams_input = Vec::new();
         for _ in 0..self.nstreams {
             let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
@@ -521,14 +513,14 @@ impl BaguaNet {
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
             let metrics = self.state.clone();
-            parallel_streams.push(std::thread::spawn(move || {
+            self.tokio_rt.spawn(async move {
                 println!(
                     "bagua-net recvstream pid={:?} tid={:?}",
                     std::process::id(),
                     std::thread::current().id()
                 );
                 for (data, state) in msg_receiver.iter() {
-                    utils::nonblocking_read_exact(&mut stream, &mut data[..]).unwrap();
+                    stream.read_exact(&mut data[..]).unwrap();
                     // stream.read_exact(&mut data[..]).unwrap();
 
                     metrics.irecv_nbytes_gauge.record(data.len() as u64);
@@ -542,7 +534,7 @@ impl BaguaNet {
                         }
                     };
                 }
-            }));
+            });
             streams_input.push(msg_sender);
         }
 
@@ -559,65 +551,49 @@ impl BaguaNet {
         let task_split_threshold = self.task_split_threshold;
         let id = self.recv_comm_next_id;
         self.recv_comm_next_id += 1;
-        self.recv_comm_map.insert(
-            id,
-            SocketRecvComm {
-                msg_sender: msg_sender,
-                tcp_sender: Arc::new(std::thread::spawn(move || {
-                    println!(
-                        "bagua-net SocketRecvComm pid={:?} tid={:?}",
-                        std::process::id(),
-                        std::thread::current().id()
-                    );
-                    let mut downstream_id = 0;
-                    for (data, state) in msg_receiver.iter() {
-                        let mut target_nbytes = data.len().to_be_bytes();
-                        // master_stream.read_exact(&mut target_nbytes[..]).unwrap();
-                        utils::nonblocking_read_exact(&mut master_stream, &mut target_nbytes[..])
-                            .unwrap();
-                        let target_nbytes = usize::from_be_bytes(target_nbytes);
-                        // println!("target_nbytes={}", target_nbytes);
+        let recv_comm = SocketRecvComm {
+            msg_sender: msg_sender,
+        };
+        self.tokio_rt.spawn(async move {
+            println!(
+                "bagua-net SocketRecvComm pid={:?} tid={:?}",
+                std::process::id(),
+                std::thread::current().id()
+            );
+            let mut master_stream = tokio::net::TcpStream::from_std(master_stream).unwrap();
+            let mut downstream_id = 0;
+            for (data, state) in msg_receiver.iter() {
+                let mut target_nbytes = data.len().to_be_bytes();
+                master_stream
+                    .read_exact(&mut target_nbytes[..])
+                    .await
+                    .unwrap();
+                let target_nbytes = usize::from_be_bytes(target_nbytes);
+                // println!("target_nbytes={}", target_nbytes);
 
-                        if target_nbytes == 0 {
-                            state.lock().unwrap().completed_subtasks += 1;
-                        } else if target_nbytes < 0 {
-                            utils::nonblocking_read_exact(
-                                &mut master_stream,
-                                &mut data[..target_nbytes],
-                            )
-                            .unwrap();
-                            match state.lock() {
-                                Ok(mut state) => {
-                                    state.completed_subtasks += 1;
-                                    state.nbytes_transferred += target_nbytes;
-                                }
-                                Err(poisoned) => {
-                                    tracing::warn!("{:?}", poisoned);
-                                }
-                            };
-                        } else {
-                            let bucket_size = if target_nbytes >= task_split_threshold
-                                && target_nbytes > parallel_streams.len()
-                            {
-                                target_nbytes
-                                    + (parallel_streams.len() - 1) / parallel_streams.len()
-                            } else {
-                                target_nbytes
-                            };
+                if target_nbytes == 0 {
+                    state.lock().unwrap().completed_subtasks += 1;
+                } else {
+                    let bucket_size = if target_nbytes >= task_split_threshold
+                        && target_nbytes > streams_input.len()
+                    {
+                        target_nbytes + (streams_input.len() - 1) / streams_input.len()
+                    } else {
+                        target_nbytes
+                    };
 
-                            for bucket in data[..target_nbytes].chunks_mut(bucket_size) {
-                                state.lock().unwrap().nsubtasks += 1;
-                                streams_input[downstream_id]
-                                    .send((&mut bucket[..], state.clone()))
-                                    .unwrap();
-                                downstream_id = (downstream_id + 1) % parallel_streams.len();
-                            }
-                            state.lock().unwrap().completed_subtasks += 1;
-                        }
+                    for bucket in data[..target_nbytes].chunks_mut(bucket_size) {
+                        state.lock().unwrap().nsubtasks += 1;
+                        streams_input[downstream_id]
+                            .send((&mut bucket[..], state.clone()))
+                            .unwrap();
+                        downstream_id = (downstream_id + 1) % streams_input.len();
                     }
-                })),
-            },
-        );
+                    state.lock().unwrap().completed_subtasks += 1;
+                }
+            }
+        });
+        self.recv_comm_map.insert(id, recv_comm);
 
         Ok(id)
     }
