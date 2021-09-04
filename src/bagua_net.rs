@@ -367,8 +367,6 @@ impl BaguaNet {
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static [u8], Arc<Mutex<RequestState>>)>();
-            let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
-            stream.set_nodelay(true).unwrap();
             // let metrics = self.state.clone();
             // TODO: Consider dynamically assigning tasks to make the least stream full
             self.tokio_rt.spawn(async move {
@@ -377,6 +375,8 @@ impl BaguaNet {
                     std::process::id(),
                     std::thread::current().id()
                 );
+                let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
+                stream.set_nodelay(true).unwrap();
 
                 for (data, state) in msg_receiver.iter() {
                     stream.write_all(&data[..]).await.unwrap();
@@ -395,8 +395,8 @@ impl BaguaNet {
             streams_input.push(msg_sender);
         }
 
-        let mut master_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
-            Ok(master_stream) => master_stream,
+        let mut ctrl_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+            Ok(ctrl_stream) => ctrl_stream,
             Err(err) => {
                 tracing::warn!(
                     "net::TcpStream::connect failed, err={:?}, socket_handle={:?}",
@@ -409,11 +409,9 @@ impl BaguaNet {
                 )));
             }
         };
-        master_stream.set_nodelay(true).unwrap();
-        master_stream.set_nonblocking(true).unwrap();
+        ctrl_stream.set_nodelay(true).unwrap();
+        ctrl_stream.set_nonblocking(true).unwrap();
 
-        let mut master_stream = tokio::net::TcpStream::from_std(master_stream).unwrap();
-        master_stream.set_nodelay(true).unwrap();
         let (msg_sender, msg_receiver) = flume::unbounded();
         let task_split_threshold = self.task_split_threshold;
         let id = self.send_comm_next_id;
@@ -426,6 +424,8 @@ impl BaguaNet {
                 std::process::id(),
                 std::thread::current().id()
             );
+            println!("write_all raw peer={}", ctrl_stream.peer_addr().unwrap());
+            let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             let out_timer = std::time::Instant::now();
             let mut sum_in_time = 0.;
             let mut downstream_id = 0;
@@ -433,8 +433,8 @@ impl BaguaNet {
                 let in_timer = std::time::Instant::now();
                 let send_nbytes = data.len().to_be_bytes();
                 println!("go write target_nbytes");
-                master_stream.write_all(&send_nbytes[..]).await.unwrap();
-                println!("write_all target_nbytes={}, peer={:?}", data.len(), master_stream.peer_addr().unwrap());
+                ctrl_stream.write_all(&send_nbytes[..]).await.unwrap();
+                println!("write_all target_nbytes={}, peer={:?}", data.len(), ctrl_stream.peer_addr().unwrap());
 
                 if data.len() != 0 {
                     let bucket_size = if data.len() >= task_split_threshold
@@ -477,7 +477,7 @@ impl BaguaNet {
         let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
         let mut streams_input = Vec::new();
         for _ in 0..self.nstreams {
-            let (stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
+            let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
                 Ok(listen) => listen,
                 Err(err) => {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
@@ -485,8 +485,6 @@ impl BaguaNet {
             };
             stream.set_nodelay(true).unwrap();
             stream.set_nonblocking(true).unwrap();
-            let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
-            stream.set_nodelay(true).unwrap();
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
@@ -497,6 +495,7 @@ impl BaguaNet {
                     std::process::id(),
                     std::thread::current().id()
                 );
+                let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
                 for (data, state) in msg_receiver.iter() {
                     stream.read_exact(&mut data[..]).await.unwrap();
                     // stream.read_exact(&mut data[..]).unwrap();
@@ -516,17 +515,15 @@ impl BaguaNet {
             streams_input.push(msg_sender);
         }
 
-        let (mut master_stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
+        let (mut ctrl_stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
             Ok(listen) => listen,
             Err(err) => {
                 return Err(BaguaNetError::TCPError(format!("{:?}", err)));
             }
         };
-        master_stream.set_nodelay(true).unwrap();
-        master_stream.set_nonblocking(true).unwrap();
+        ctrl_stream.set_nodelay(true).unwrap();
+        ctrl_stream.set_nonblocking(true).unwrap();
 
-        let mut master_stream = tokio::net::TcpStream::from_std(master_stream).unwrap();
-        master_stream.set_nodelay(true).unwrap();
         let (msg_sender, msg_receiver) = flume::unbounded();
         let task_split_threshold = self.task_split_threshold;
         let id = self.recv_comm_next_id;
@@ -540,11 +537,13 @@ impl BaguaNet {
                 std::process::id(),
                 std::thread::current().id()
             );
+            println!("read_exact raw local={}", ctrl_stream.local_addr().unwrap());
+            let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             let mut downstream_id = 0;
             for (data, state) in msg_receiver.iter() {
                 let mut target_nbytes = data.len().to_be_bytes();
-                println!("ready to read_exact, addr={:?}", master_stream.local_addr().unwrap());
-                master_stream
+                println!("ready to read_exact, addr={:?}", ctrl_stream.local_addr().unwrap());
+                ctrl_stream
                     .read_exact(&mut target_nbytes[..])
                     .await
                     .unwrap();
