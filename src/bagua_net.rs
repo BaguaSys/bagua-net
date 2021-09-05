@@ -660,7 +660,7 @@ impl BaguaNet {
                 if task_completed {
                     send_req.trace_span.end();
                 }
-                println!("state={:?}", state);
+                println!("send_req.state={:?}", state);
                 Ok((task_completed, state.nbytes_transferred))
             }
             SocketRequest::RecvRequest(recv_req) => {
@@ -673,7 +673,7 @@ impl BaguaNet {
                 if task_completed {
                     recv_req.trace_span.end();
                 }
-                println!("state={:?}", state);
+                println!("recv_req.state={:?}", state);
                 Ok((task_completed, state.nbytes_transferred))
             }
         };
