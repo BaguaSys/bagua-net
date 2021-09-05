@@ -350,7 +350,7 @@ impl BaguaNet {
     ) -> Result<SocketSendCommID, BaguaNetError> {
         let mut streams_input = Vec::new();
         for _ in 0..self.nstreams {
-            let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+            let stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
                 Ok(stream) => stream,
                 Err(err) => {
                     tracing::warn!(
@@ -394,7 +394,7 @@ impl BaguaNet {
             streams_input.push(msg_sender);
         }
 
-        let mut ctrl_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+        let ctrl_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
             Ok(ctrl_stream) => ctrl_stream,
             Err(err) => {
                 tracing::warn!(
@@ -471,7 +471,7 @@ impl BaguaNet {
         let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
         let mut streams_input = Vec::new();
         for _ in 0..self.nstreams {
-            let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
+            let (stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
                 Ok(listen) => listen,
                 Err(err) => {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
@@ -491,7 +491,7 @@ impl BaguaNet {
                     };
 
                     stream.read_exact(&mut data[..]).await.unwrap();
-                    metrics.irecv_nbytes_gauge.record(data.len() as u64);
+                    // metrics.irecv_nbytes_gauge.record(data.len() as u64);
 
                     match state.lock() {
                         Ok(mut state) => {
