@@ -366,7 +366,7 @@ impl BaguaNet {
             stream.set_nodelay(true).unwrap();
             stream.set_nonblocking(true).unwrap();
 
-            let (msg_sender, msg_receiver) =
+            let (msg_sender, mut msg_receiver) =
                 mpsc::unbounded_channel::<(&'static [u8], Arc<Mutex<RequestState>>)>();
             // let metrics = self.state.clone();
             // TODO: Consider dynamically assigning tasks to make the least stream full
@@ -416,7 +416,7 @@ impl BaguaNet {
         };
         ctrl_stream.set_nodelay(true).unwrap();
 
-        let (msg_sender, msg_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (msg_sender, mut msg_receiver) = tokio::sync::mpsc::unbounded_channel();
         let task_split_threshold = self.task_split_threshold;
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
@@ -494,7 +494,7 @@ impl BaguaNet {
             stream.set_nodelay(true).unwrap();
             stream.set_nonblocking(true).unwrap();
 
-            let (msg_sender, msg_receiver) =
+            let (msg_sender, mut msg_receiver) =
                 mpsc::unbounded_channel::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
             let metrics = self.state.clone();
             self.tokio_rt.spawn(async move {
@@ -535,7 +535,7 @@ impl BaguaNet {
         };
         ctrl_stream.set_nodelay(true).unwrap();
 
-        let (msg_sender, msg_receiver) = mpsc::unbounded_channel();
+        let (msg_sender, mut msg_receiver) = mpsc::unbounded_channel();
         let task_split_threshold = self.task_split_threshold;
         let id = self.recv_comm_next_id;
         self.recv_comm_next_id += 1;
