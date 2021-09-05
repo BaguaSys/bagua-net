@@ -349,8 +349,8 @@ impl BaguaNet {
         socket_handle: SocketHandle,
     ) -> Result<SocketSendCommID, BaguaNetError> {
         let mut streams_input = Vec::new();
-        for _ in 0..self.nstreams {
-            let stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+        for i in 0..self.nstreams {
+            let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
                 Ok(stream) => stream,
                 Err(err) => {
                     tracing::warn!(
@@ -364,6 +364,7 @@ impl BaguaNet {
                     )));
                 }
             };
+            stream.write_all(&i.to_be_bytes()[..]).unwrap();
 
             let (msg_sender, mut msg_receiver) =
                 mpsc::unbounded_channel::<(&'static [u8], Arc<Mutex<RequestState>>)>();
@@ -475,13 +476,16 @@ impl BaguaNet {
     ) -> Result<SocketRecvCommID, BaguaNetError> {
         let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
         let mut streams_input = Vec::new();
-        for _ in 0..self.nstreams {
-            let (stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
+        for i in 0..self.nstreams {
+            let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
                 Ok(listen) => listen,
                 Err(err) => {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
                 }
             };
+            let mut size_bytes = (0 as usize).to_be_bytes();
+            stream.read_exact(&mut size_bytes[..]).unwrap();
+            println!("i={}, size_bytes={}", i, usize::from_be_bytes(size_bytes));
 
             let (msg_sender, mut msg_receiver) =
                 mpsc::unbounded_channel::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
