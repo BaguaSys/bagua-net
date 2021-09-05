@@ -370,12 +370,6 @@ impl BaguaNet {
             // let metrics = self.state.clone();
             // TODO: Consider dynamically assigning tasks to make the least stream full
             self.tokio_rt.spawn(async move {
-                println!(
-                    "bagua-net sendstream pid={:?} tid={:?}",
-                    std::process::id(),
-                    std::thread::current().id()
-                );
-
                 let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
                 stream.set_nodelay(true).unwrap();
                 loop {
@@ -422,11 +416,6 @@ impl BaguaNet {
         let metrics = self.state.clone();
         let send_comm = SocketSendComm { msg_sender: msg_sender };
         self.tokio_rt.spawn(async move {
-            println!(
-                "bagua-net SendComm pid={:?} tid={:?}",
-                std::process::id(),
-                std::thread::current().id()
-            );
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             ctrl_stream.set_nodelay(true).unwrap();
             let out_timer = std::time::Instant::now();
@@ -493,11 +482,6 @@ impl BaguaNet {
                 mpsc::unbounded_channel::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
             let metrics = self.state.clone();
             self.tokio_rt.spawn(async move {
-                println!(
-                    "bagua-net recvstream pid={:?} tid={:?}",
-                    std::process::id(),
-                    std::thread::current().id()
-                );
                 let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
                 stream.set_nodelay(true).unwrap();
                 loop {
@@ -538,11 +522,6 @@ impl BaguaNet {
             msg_sender: msg_sender,
         };
         self.tokio_rt.spawn(async move {
-            println!(
-                "bagua-net SocketRecvComm pid={:?} tid={:?}",
-                std::process::id(),
-                std::thread::current().id()
-            );
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             ctrl_stream.set_nodelay(true).unwrap();
             let mut downstream_id = 0;
