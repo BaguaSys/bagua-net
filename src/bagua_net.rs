@@ -434,8 +434,9 @@ impl BaguaNet {
                     None => break,
                 };
                 let in_timer = std::time::Instant::now();
-                let send_nbytes = data.len().to_be_bytes();
-                ctrl_stream.write_all(&send_nbytes[..]).await.unwrap();
+                // let send_nbytes = data.len().to_be_bytes();
+                // ctrl_stream.write_all(&send_nbytes[..]).await.unwrap();
+                ctrl_stream.write_u32(data.len() as u32).await.unwrap();
                 println!("send to {:?} target_nbytes={}", ctrl_stream.peer_addr(), data.len());
 
                 if data.len() != 0 {
@@ -536,13 +537,21 @@ impl BaguaNet {
                     Some(it) => it,
                     None => break,
                 };
-                let mut target_nbytes = data.len().to_be_bytes();
-                if let Err(err) = ctrl_stream.read_exact(&mut target_nbytes[..]).await {
-                    state.lock().unwrap().err =
+                let target_nbytes = match ctrl_stream.read_u32().await {
+                    Ok(nbytes) => nbytes as usize,
+                    Err(err) => {
+                        state.lock().unwrap().err =
                         Some(BaguaNetError::InnerError(format!("{:?}", err)));
-                    break;
-                }
-                let target_nbytes = usize::from_be_bytes(target_nbytes);
+                        return;
+                    }
+                };
+                // let mut target_nbytes = data.len().to_be_bytes();
+                // if let Err(err) = ctrl_stream.read_exact(&mut target_nbytes[..]).await {
+                //     state.lock().unwrap().err =
+                //         Some(BaguaNetError::InnerError(format!("{:?}", err)));
+                //     break;
+                // }
+                // let target_nbytes = usize::from_be_bytes(target_nbytes);
 
                 println!("{:?} recv target_nbytes={}", ctrl_stream.local_addr(), target_nbytes);
 
