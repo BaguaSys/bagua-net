@@ -79,7 +79,7 @@ pub struct RequestState {
     pub nsubtasks: usize,
     pub completed_subtasks: usize,
     pub nbytes_transferred: usize,
-    pub failed: bool,
+    pub err: Option<BaguaNetError>,
 }
 
 pub enum SocketRequest {
@@ -414,7 +414,9 @@ impl BaguaNet {
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
         let metrics = self.state.clone();
-        let send_comm = SocketSendComm { msg_sender: msg_sender };
+        let send_comm = SocketSendComm {
+            msg_sender: msg_sender,
+        };
         self.tokio_rt.spawn(async move {
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             ctrl_stream.set_nodelay(true).unwrap();
@@ -431,13 +433,12 @@ impl BaguaNet {
                 ctrl_stream.write_all(&send_nbytes[..]).await.unwrap();
 
                 if data.len() != 0 {
-                    let bucket_size = if data.len() >= task_split_threshold
-                        && data.len() > streams_input.len()
-                    {
-                        data.len() + (streams_input.len() - 1) / streams_input.len()
-                    } else {
-                        data.len()
-                    };
+                    let bucket_size =
+                        if data.len() >= task_split_threshold && data.len() > streams_input.len() {
+                            data.len() + (streams_input.len() - 1) / streams_input.len()
+                        } else {
+                            data.len()
+                        };
                     for bucket in data.chunks(bucket_size) {
                         state.lock().unwrap().nsubtasks += 1;
                         streams_input[downstream_id]
@@ -456,10 +457,7 @@ impl BaguaNet {
                 //     sum_in_time / out_timer.elapsed().as_secs_f64();
             }
         });
-        self.send_comm_map.insert(
-            id,
-            send_comm,
-        );
+        self.send_comm_map.insert(id, send_comm);
 
         Ok(id)
     }
@@ -531,15 +529,16 @@ impl BaguaNet {
                     None => break,
                 };
                 let mut target_nbytes = data.len().to_be_bytes();
-                ctrl_stream
-                    .read_exact(&mut target_nbytes[..])
-                    .await
-                    .unwrap();
+                if let Err(err) = ctrl_stream.read_exact(&mut target_nbytes[..]).await {
+                    state.lock().unwrap().err =
+                        Some(BaguaNetError::InnerError(format!("{:?}", err)));
+                    break;
+                }
                 let target_nbytes = usize::from_be_bytes(target_nbytes);
 
                 if target_nbytes == 0 {
                     state.lock().unwrap().completed_subtasks += 1;
-                } else if target_nbytes > data.len()  {
+                } else if target_nbytes > data.len() {
                     match state.lock() {
                         Ok(mut state) => {
                             state.completed_subtasks += 1;
@@ -595,7 +594,7 @@ impl BaguaNet {
             nsubtasks: 1,
             completed_subtasks: 0,
             nbytes_transferred: 0,
-            failed: false,
+            err: None,
         }));
         self.socket_request_map.insert(
             id,
@@ -630,7 +629,7 @@ impl BaguaNet {
             nsubtasks: 1,
             completed_subtasks: 0,
             nbytes_transferred: 0,
-            failed: false,
+            err: None,
         }));
         self.socket_request_map.insert(
             id,
@@ -650,8 +649,8 @@ impl BaguaNet {
         let ret = match request {
             SocketRequest::SendRequest(send_req) => {
                 let state = send_req.state.lock().unwrap();
-                if state.failed {
-                    return Err(BaguaNetError::InnerError(format!("recv_req failed!")));
+                if let Some(err) = state.err {
+                    return Err(err);
                 }
 
                 let task_completed = state.nsubtasks == state.completed_subtasks;
@@ -662,8 +661,8 @@ impl BaguaNet {
             }
             SocketRequest::RecvRequest(recv_req) => {
                 let state = recv_req.state.lock().unwrap();
-                if state.failed {
-                    return Err(BaguaNetError::InnerError(format!("recv_req failed!")));
+                if let Some(err) = state.err {
+                    return Err(err);
                 }
 
                 let task_completed = state.nsubtasks == state.completed_subtasks;
