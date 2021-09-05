@@ -350,6 +350,7 @@ impl BaguaNet {
     ) -> Result<SocketSendCommID, BaguaNetError> {
         let mut streams_input = Vec::new();
         for i in 0..self.nstreams {
+            println!("connect {:?}", socket_handle.addr.clone().to_str());
             let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
                 Ok(stream) => stream,
                 Err(err) => {
@@ -485,7 +486,7 @@ impl BaguaNet {
             };
             let mut size_bytes = (0 as usize).to_be_bytes();
             stream.read_exact(&mut size_bytes[..]).unwrap();
-            println!("i={}, size_bytes={}", i, usize::from_be_bytes(size_bytes));
+            // println!("i={}, size_bytes={}", i, usize::from_be_bytes(size_bytes));
 
             let (msg_sender, mut msg_receiver) =
                 mpsc::unbounded_channel::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
