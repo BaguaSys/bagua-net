@@ -544,8 +544,11 @@ impl BaguaNet {
                 } else if target_nbytes > data.len() {
                     match state.lock() {
                         Ok(mut state) => {
-                            state.completed_subtasks += 1;
-                            state.nbytes_transferred += data.len();
+                            state.err = Some(BaguaNetError::InnerError(format!(
+                                "Invalid target_nbytes!! target_nbytes={}, buff.len={}",
+                                target_nbytes,
+                                data.len(),
+                            )));
                         }
                         Err(poisoned) => {
                             tracing::warn!("{:?}", poisoned);
