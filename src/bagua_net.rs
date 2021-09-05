@@ -484,6 +484,7 @@ impl BaguaNet {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
                 }
             };
+            println!("accept addr={:?}", _addr.clone());
             let mut size_bytes = (0 as usize).to_be_bytes();
             stream.read_exact(&mut size_bytes[..]).unwrap();
             // println!("i={}, size_bytes={}", i, usize::from_be_bytes(size_bytes));
