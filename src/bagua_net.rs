@@ -79,6 +79,7 @@ pub struct RequestState {
     pub nsubtasks: usize,
     pub completed_subtasks: usize,
     pub nbytes_transferred: usize,
+    pub failed: bool,
 }
 
 pub enum SocketRequest {
@@ -363,8 +364,6 @@ impl BaguaNet {
                     )));
                 }
             };
-            stream.set_nodelay(true).unwrap();
-            stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, mut msg_receiver) =
                 mpsc::unbounded_channel::<(&'static [u8], Arc<Mutex<RequestState>>)>();
@@ -378,6 +377,7 @@ impl BaguaNet {
                 );
 
                 let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
+                stream.set_nodelay(true).unwrap();
                 loop {
                     let (data, state) = match msg_receiver.recv().await {
                         Some(it) => it,
@@ -414,7 +414,6 @@ impl BaguaNet {
                 )));
             }
         };
-        ctrl_stream.set_nodelay(true).unwrap();
 
         let (msg_sender, mut msg_receiver) = tokio::sync::mpsc::unbounded_channel();
         let task_split_threshold = self.task_split_threshold;
@@ -429,6 +428,7 @@ impl BaguaNet {
                 std::thread::current().id()
             );
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
+            ctrl_stream.set_nodelay(true).unwrap();
             let out_timer = std::time::Instant::now();
             let mut sum_in_time = 0.;
             let mut downstream_id = 0;
@@ -488,8 +488,6 @@ impl BaguaNet {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
                 }
             };
-            stream.set_nodelay(true).unwrap();
-            stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, mut msg_receiver) =
                 mpsc::unbounded_channel::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
@@ -501,6 +499,7 @@ impl BaguaNet {
                     std::thread::current().id()
                 );
                 let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
+                stream.set_nodelay(true).unwrap();
                 loop {
                     let (data, state) = match msg_receiver.recv().await {
                         Some(it) => it,
@@ -530,7 +529,6 @@ impl BaguaNet {
                 return Err(BaguaNetError::TCPError(format!("{:?}", err)));
             }
         };
-        ctrl_stream.set_nodelay(true).unwrap();
 
         let (msg_sender, mut msg_receiver) = mpsc::unbounded_channel();
         let task_split_threshold = self.task_split_threshold;
@@ -546,6 +544,7 @@ impl BaguaNet {
                 std::thread::current().id()
             );
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
+            ctrl_stream.set_nodelay(true).unwrap();
             let mut downstream_id = 0;
             loop {
                 let (data, state) = match msg_receiver.recv().await {
@@ -561,6 +560,16 @@ impl BaguaNet {
 
                 if target_nbytes == 0 {
                     state.lock().unwrap().completed_subtasks += 1;
+                } else if target_nbytes > data.len()  {
+                    match state.lock() {
+                        Ok(mut state) => {
+                            state.completed_subtasks += 1;
+                            state.nbytes_transferred += data.len();
+                        }
+                        Err(poisoned) => {
+                            tracing::warn!("{:?}", poisoned);
+                        }
+                    };
                 } else {
                     let bucket_size = if target_nbytes >= task_split_threshold
                         && target_nbytes > streams_input.len()
@@ -607,6 +616,7 @@ impl BaguaNet {
             nsubtasks: 1,
             completed_subtasks: 0,
             nbytes_transferred: 0,
+            failed: false,
         }));
         self.socket_request_map.insert(
             id,
@@ -641,6 +651,7 @@ impl BaguaNet {
             nsubtasks: 1,
             completed_subtasks: 0,
             nbytes_transferred: 0,
+            failed: false,
         }));
         self.socket_request_map.insert(
             id,
@@ -660,8 +671,11 @@ impl BaguaNet {
         let ret = match request {
             SocketRequest::SendRequest(send_req) => {
                 let state = send_req.state.lock().unwrap();
-                let task_completed = state.nsubtasks == state.completed_subtasks;
+                if state.failed {
+                    return Err(BaguaNetError::InnerError(format!("recv_req failed!")));
+                }
 
+                let task_completed = state.nsubtasks == state.completed_subtasks;
                 if task_completed {
                     send_req.trace_span.end();
                 }
@@ -669,8 +683,11 @@ impl BaguaNet {
             }
             SocketRequest::RecvRequest(recv_req) => {
                 let state = recv_req.state.lock().unwrap();
-                let task_completed = state.nsubtasks == state.completed_subtasks;
+                if state.failed {
+                    return Err(BaguaNetError::InnerError(format!("recv_req failed!")));
+                }
 
+                let task_completed = state.nsubtasks == state.completed_subtasks;
                 if task_completed {
                     recv_req.trace_span.end();
                 }
