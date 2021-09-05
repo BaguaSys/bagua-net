@@ -54,7 +54,7 @@ pub struct SocketRecvComm {
     pub msg_sender: mpsc::UnboundedSender<(&'static mut [u8], Arc<Mutex<RequestState>>)>,
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum BaguaNetError {
     #[error("io error")]
     IOError(String),
@@ -649,7 +649,7 @@ impl BaguaNet {
         let ret = match request {
             SocketRequest::SendRequest(send_req) => {
                 let state = send_req.state.lock().unwrap();
-                if let Some(err) = state.err {
+                if let Some(err) = state.err.clone() {
                     return Err(err);
                 }
 
@@ -661,7 +661,7 @@ impl BaguaNet {
             }
             SocketRequest::RecvRequest(recv_req) => {
                 let state = recv_req.state.lock().unwrap();
-                if let Some(err) = state.err {
+                if let Some(err) = state.err.clone() {
                     return Err(err);
                 }
 
