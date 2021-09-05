@@ -428,7 +428,6 @@ impl BaguaNet {
                 std::process::id(),
                 std::thread::current().id()
             );
-            println!("write_all raw peer={}", ctrl_stream.peer_addr().unwrap());
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             let out_timer = std::time::Instant::now();
             let mut sum_in_time = 0.;
@@ -440,9 +439,7 @@ impl BaguaNet {
                 };
                 let in_timer = std::time::Instant::now();
                 let send_nbytes = data.len().to_be_bytes();
-                println!("go write target_nbytes");
                 ctrl_stream.write_all(&send_nbytes[..]).await.unwrap();
-                println!("write_all target_nbytes={}, peer={:?}", data.len(), ctrl_stream.peer_addr().unwrap());
 
                 if data.len() != 0 {
                     let bucket_size = if data.len() >= task_split_threshold
@@ -548,7 +545,6 @@ impl BaguaNet {
                 std::process::id(),
                 std::thread::current().id()
             );
-            println!("read_exact raw local={}", ctrl_stream.local_addr().unwrap());
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             let mut downstream_id = 0;
             loop {
@@ -557,13 +553,11 @@ impl BaguaNet {
                     None => break,
                 };
                 let mut target_nbytes = data.len().to_be_bytes();
-                println!("ready to read_exact, addr={:?}", ctrl_stream.local_addr().unwrap());
                 ctrl_stream
                     .read_exact(&mut target_nbytes[..])
                     .await
                     .unwrap();
                 let target_nbytes = usize::from_be_bytes(target_nbytes);
-                println!("target_nbytes={}", target_nbytes);
 
                 if target_nbytes == 0 {
                     state.lock().unwrap().completed_subtasks += 1;
