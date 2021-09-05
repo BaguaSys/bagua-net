@@ -367,31 +367,30 @@ impl BaguaNet {
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static [u8], Arc<Mutex<RequestState>>)>();
+            let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
             // let metrics = self.state.clone();
             // TODO: Consider dynamically assigning tasks to make the least stream full
-            // self.tokio_rt.spawn(async move {
-            //     println!(
-            //         "bagua-net sendstream pid={:?} tid={:?}",
-            //         std::process::id(),
-            //         std::thread::current().id()
-            //     );
-            //     let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
-            //     stream.set_nodelay(true).unwrap();
+            self.tokio_rt.spawn(async move {
+                println!(
+                    "bagua-net sendstream pid={:?} tid={:?}",
+                    std::process::id(),
+                    std::thread::current().id()
+                );
 
-            //     for (data, state) in msg_receiver.iter() {
-            //         stream.write_all(&data[..]).await.unwrap();
+                for (data, state) in msg_receiver.iter() {
+                    stream.write_all(&data[..]).await.unwrap();
 
-            //         match state.lock() {
-            //             Ok(mut state) => {
-            //                 state.completed_subtasks += 1;
-            //                 state.nbytes_transferred += data.len();
-            //             }
-            //             Err(poisoned) => {
-            //                 tracing::warn!("{:?}", poisoned);
-            //             }
-            //         };
-            //     }
-            // });
+                    match state.lock() {
+                        Ok(mut state) => {
+                            state.completed_subtasks += 1;
+                            state.nbytes_transferred += data.len();
+                        }
+                        Err(poisoned) => {
+                            tracing::warn!("{:?}", poisoned);
+                        }
+                    };
+                }
+            });
             streams_input.push(msg_sender);
         }
 
@@ -487,30 +486,30 @@ impl BaguaNet {
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
-            // let metrics = self.state.clone();
-            // self.tokio_rt.spawn(async move {
-            //     println!(
-            //         "bagua-net recvstream pid={:?} tid={:?}",
-            //         std::process::id(),
-            //         std::thread::current().id()
-            //     );
-            //     let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
-            //     for (data, state) in msg_receiver.iter() {
-            //         stream.read_exact(&mut data[..]).await.unwrap();
-            //         // stream.read_exact(&mut data[..]).unwrap();
+            let metrics = self.state.clone();
+            let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
+            self.tokio_rt.spawn(async move {
+                println!(
+                    "bagua-net recvstream pid={:?} tid={:?}",
+                    std::process::id(),
+                    std::thread::current().id()
+                );
+                for (data, state) in msg_receiver.iter() {
+                    stream.read_exact(&mut data[..]).await.unwrap();
+                    // stream.read_exact(&mut data[..]).unwrap();
 
-            //         metrics.irecv_nbytes_gauge.record(data.len() as u64);
-            //         match state.lock() {
-            //             Ok(mut state) => {
-            //                 state.completed_subtasks += 1;
-            //                 state.nbytes_transferred += data.len();
-            //             }
-            //             Err(poisoned) => {
-            //                 tracing::warn!("{:?}", poisoned);
-            //             }
-            //         };
-            //     }
-            // });
+                    metrics.irecv_nbytes_gauge.record(data.len() as u64);
+                    match state.lock() {
+                        Ok(mut state) => {
+                            state.completed_subtasks += 1;
+                            state.nbytes_transferred += data.len();
+                        }
+                        Err(poisoned) => {
+                            tracing::warn!("{:?}", poisoned);
+                        }
+                    };
+                }
+            });
             streams_input.push(msg_sender);
         }
 
