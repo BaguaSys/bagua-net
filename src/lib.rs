@@ -280,6 +280,7 @@ pub extern "C" fn bagua_net_c_irecv(
 /// 0: success
 /// -1: null pointer
 /// -2: invalid parameter
+/// -3: bagua-net inner error
 #[no_mangle]
 pub extern "C" fn bagua_net_c_test(
     ptr: *mut BaguaNetC,
@@ -297,10 +298,17 @@ pub extern "C" fn bagua_net_c_test(
     }
 
     unsafe {
-        let (let_done, let_bytes) = (*ptr).inner.lock().unwrap().test(request_id).unwrap();
-        *done = let_done;
-        if let_done && !bytes.is_null() {
-            *bytes = let_bytes;
+        match (*ptr).inner.lock().unwrap().test(request_id) {
+            Ok((let_done, let_bytes)) => {
+                *done = let_done;
+                if let_done && !bytes.is_null() {
+                    *bytes = let_bytes;
+                }
+            },
+            Err(err) => {
+                tracing::warn!("{:?}", err);
+                return -3;
+            }
         }
     }
     return 0;

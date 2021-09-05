@@ -549,6 +549,7 @@ impl BaguaNet {
                                 target_nbytes,
                                 data.len(),
                             )));
+                            break;
                         }
                         Err(poisoned) => {
                             tracing::warn!("{:?}", poisoned);
