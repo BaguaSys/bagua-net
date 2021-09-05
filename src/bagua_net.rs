@@ -448,12 +448,12 @@ impl BaguaNet {
                 }
                 state.lock().unwrap().completed_subtasks += 1;
 
-                let dur = in_timer.elapsed().as_secs_f64();
-                sum_in_time += dur;
+                // let dur = in_timer.elapsed().as_secs_f64();
+                // sum_in_time += dur;
 
-                *metrics.isend_per_second.lock().unwrap() = 1. / dur;
-                *metrics.isend_percentage_of_effective_time.lock().unwrap() =
-                    sum_in_time / out_timer.elapsed().as_secs_f64();
+                // *metrics.isend_per_second.lock().unwrap() = 1. / dur;
+                // *metrics.isend_percentage_of_effective_time.lock().unwrap() =
+                //     sum_in_time / out_timer.elapsed().as_secs_f64();
             }
         });
         self.send_comm_map.insert(
