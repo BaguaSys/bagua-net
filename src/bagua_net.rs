@@ -350,7 +350,6 @@ impl BaguaNet {
     ) -> Result<SocketSendCommID, BaguaNetError> {
         let mut streams_input = Vec::new();
         for i in 0..self.nstreams {
-            println!("connect {:?}", socket_handle.addr.clone().to_str());
             let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
                 Ok(stream) => stream,
                 Err(err) => {
@@ -365,6 +364,7 @@ impl BaguaNet {
                     )));
                 }
             };
+            println!("{:?} connect to {:?}", stream.local_addr(), socket_handle.addr.clone().to_str());
             stream.write_all(&i.to_be_bytes()[..]).unwrap();
 
             let (msg_sender, mut msg_receiver) =
@@ -414,7 +414,7 @@ impl BaguaNet {
                 )));
             }
         };
-        println!("{:?} connect to {:?}", ctrl_stream.local_addr(), ctrl_stream.peer_addr());
+        println!("ctrl_stream {:?} connect to {:?}", ctrl_stream.local_addr(), ctrl_stream.peer_addr());
 
         let (msg_sender, mut msg_receiver) = tokio::sync::mpsc::unbounded_channel();
         let task_split_threshold = self.task_split_threshold;
