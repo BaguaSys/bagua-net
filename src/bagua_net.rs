@@ -378,17 +378,17 @@ impl BaguaNet {
 
                 let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
                 for (data, state) in msg_receiver.iter() {
-                    stream.write_all(&data[..]).await.unwrap();
+                    // stream.write_all(&data[..]).await.unwrap();
 
-                    match state.lock() {
-                        Ok(mut state) => {
-                            state.completed_subtasks += 1;
-                            state.nbytes_transferred += data.len();
-                        }
-                        Err(poisoned) => {
-                            tracing::warn!("{:?}", poisoned);
-                        }
-                    };
+                    // match state.lock() {
+                    //     Ok(mut state) => {
+                    //         state.completed_subtasks += 1;
+                    //         state.nbytes_transferred += data.len();
+                    //     }
+                    //     Err(poisoned) => {
+                    //         tracing::warn!("{:?}", poisoned);
+                    //     }
+                    // };
                 }
             });
             streams_input.push(msg_sender);
@@ -495,19 +495,18 @@ impl BaguaNet {
                 );
                 let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
                 for (data, state) in msg_receiver.iter() {
-                    stream.read_exact(&mut data[..]).await.unwrap();
-                    // stream.read_exact(&mut data[..]).unwrap();
+                    // stream.read_exact(&mut data[..]).await.unwrap();
 
-                    metrics.irecv_nbytes_gauge.record(data.len() as u64);
-                    match state.lock() {
-                        Ok(mut state) => {
-                            state.completed_subtasks += 1;
-                            state.nbytes_transferred += data.len();
-                        }
-                        Err(poisoned) => {
-                            tracing::warn!("{:?}", poisoned);
-                        }
-                    };
+                    // metrics.irecv_nbytes_gauge.record(data.len() as u64);
+                    // match state.lock() {
+                    //     Ok(mut state) => {
+                    //         state.completed_subtasks += 1;
+                    //         state.nbytes_transferred += data.len();
+                    //     }
+                    //     Err(poisoned) => {
+                    //         tracing::warn!("{:?}", poisoned);
+                    //     }
+                    // };
                 }
             });
             streams_input.push(msg_sender);
