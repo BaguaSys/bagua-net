@@ -408,6 +408,7 @@ impl BaguaNet {
                 )));
             }
         };
+        println!("connect on local_addr={:?}", ctrl_stream.local_addr());
 
         let (msg_sender, mut msg_receiver) = tokio::sync::mpsc::unbounded_channel();
         let task_split_threshold = self.task_split_threshold;
@@ -511,6 +512,8 @@ impl BaguaNet {
                 return Err(BaguaNetError::TCPError(format!("{:?}", err)));
             }
         };
+
+        println!("listen on local_addr={:?}", ctrl_stream.local_addr());
 
         let (msg_sender, mut msg_receiver) = mpsc::unbounded_channel();
         let task_split_threshold = self.task_split_threshold;
