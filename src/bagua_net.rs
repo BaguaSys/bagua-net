@@ -507,7 +507,7 @@ impl BaguaNet {
             streams_input.push(msg_sender);
         }
 
-        let (mut ctrl_stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
+        let (ctrl_stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
             Ok(listen) => listen,
             Err(err) => {
                 return Err(BaguaNetError::TCPError(format!("{:?}", err)));
@@ -685,12 +685,14 @@ impl BaguaNet {
 
     pub fn close_send(&mut self, send_comm_id: SocketSendCommID) -> Result<(), BaguaNetError> {
         self.send_comm_map.remove(&send_comm_id);
+        println!("close_send send_comm_id={}", send_comm_id);
 
         Ok(())
     }
 
     pub fn close_recv(&mut self, recv_comm_id: SocketRecvCommID) -> Result<(), BaguaNetError> {
         self.recv_comm_map.remove(&recv_comm_id);
+        println!("close_recv recv_comm_id={}", recv_comm_id);
 
         Ok(())
     }
