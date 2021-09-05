@@ -348,22 +348,22 @@ impl BaguaNet {
     ) -> Result<SocketSendCommID, BaguaNetError> {
         let mut streams_input = Vec::new();
         for _ in 0..self.nstreams {
-            // let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
-            //     Ok(stream) => stream,
-            //     Err(err) => {
-            //         tracing::warn!(
-            //             "net::TcpStream::connect failed, err={:?}, socket_handle={:?}",
-            //             err,
-            //             socket_handle
-            //         );
-            //         return Err(BaguaNetError::TCPError(format!(
-            //             "socket_handle={:?}, err={:?}",
-            //             socket_handle, err
-            //         )));
-            //     }
-            // };
-            // stream.set_nodelay(true).unwrap();
-            // stream.set_nonblocking(true).unwrap();
+            let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+                Ok(stream) => stream,
+                Err(err) => {
+                    tracing::warn!(
+                        "net::TcpStream::connect failed, err={:?}, socket_handle={:?}",
+                        err,
+                        socket_handle
+                    );
+                    return Err(BaguaNetError::TCPError(format!(
+                        "socket_handle={:?}, err={:?}",
+                        socket_handle, err
+                    )));
+                }
+            };
+            stream.set_nodelay(true).unwrap();
+            stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static [u8], Arc<Mutex<RequestState>>)>();
@@ -476,14 +476,14 @@ impl BaguaNet {
         let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
         let mut streams_input = Vec::new();
         for _ in 0..self.nstreams {
-            // let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
-            //     Ok(listen) => listen,
-            //     Err(err) => {
-            //         return Err(BaguaNetError::TCPError(format!("{:?}", err)));
-            //     }
-            // };
-            // stream.set_nodelay(true).unwrap();
-            // stream.set_nonblocking(true).unwrap();
+            let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
+                Ok(listen) => listen,
+                Err(err) => {
+                    return Err(BaguaNetError::TCPError(format!("{:?}", err)));
+                }
+            };
+            stream.set_nodelay(true).unwrap();
+            stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, msg_receiver) =
                 flume::unbounded::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
