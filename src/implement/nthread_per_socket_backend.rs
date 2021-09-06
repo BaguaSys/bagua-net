@@ -92,7 +92,7 @@ pub struct BaguaNet {
     pub rank: i32,
     state: Arc<AppState>,
     nstreams: usize,
-    task_split_threshold: usize,
+    min_chunksize: usize,
 }
 
 impl BaguaNet {
@@ -228,8 +228,8 @@ impl BaguaNet {
                 .unwrap_or("2".to_owned())
                 .parse()
                 .unwrap(),
-            task_split_threshold: std::env::var("BAGUA_NET_TASK_SPLIT_THRESHOLD")
-                .unwrap_or("1048576".to_owned())
+            min_chunksize: std::env::var("BAGUA_NET_MIN_CHUNKSIZE")
+                .unwrap_or("65536".to_owned())
                 .parse()
                 .unwrap(),
         })
@@ -381,7 +381,7 @@ impl Net for BaguaNet {
         ctrl_stream.set_nonblocking(true).unwrap();
 
         let (msg_sender, msg_receiver) = flume::unbounded();
-        let task_split_threshold = self.task_split_threshold;
+        let min_chunksize = self.min_chunksize;
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
         self.send_comm_map.insert(
@@ -395,14 +395,16 @@ impl Net for BaguaNet {
                         utils::nonblocking_write_all(&mut ctrl_stream, &send_nbytes[..]).unwrap();
 
                         if data.len() != 0 {
-                            let bucket_size = if data.len() >= task_split_threshold
-                                && data.len() > parallel_streams.len()
-                            {
-                                data.len() + (parallel_streams.len() - 1) / parallel_streams.len()
-                            } else {
-                                data.len()
-                            };
-                            for bucket in data.chunks(bucket_size) {
+                            // let bucket_size = if data.len() >= min_chunksize
+                            //     && data.len() > parallel_streams.len()
+                            // {
+                            //     data.len() + (parallel_streams.len() - 1) / parallel_streams.len()
+                            // } else {
+                            //     data.len()
+                            // };
+                            let chunk_size = utils::chunk_size(data.len(), min_chunksize, nstreams);
+
+                            for bucket in data.chunks(chunk_size) {
                                 state.lock().unwrap().nsubtasks += 1;
                                 streams_input[downstream_id]
                                     .send((bucket, state.clone()))
@@ -477,8 +479,9 @@ impl Net for BaguaNet {
         ctrl_stream.set_nodelay(true).unwrap();
         ctrl_stream.set_nonblocking(true).unwrap();
 
+        let nstreams = self.nstreams;
         let (msg_sender, msg_receiver) = flume::unbounded();
-        let task_split_threshold = self.task_split_threshold;
+        let min_chunksize = self.min_chunksize;
         let id = self.recv_comm_next_id;
         self.recv_comm_next_id += 1;
         self.recv_comm_map.insert(
@@ -494,16 +497,17 @@ impl Net for BaguaNet {
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
                         if target_nbytes != 0 {
-                            let bucket_size = if target_nbytes >= task_split_threshold
-                                && target_nbytes > parallel_streams.len()
-                            {
-                                target_nbytes
-                                    + (parallel_streams.len() - 1) / parallel_streams.len()
-                            } else {
-                                target_nbytes
-                            };
+                            // let bucket_size = if target_nbytes >= min_chunksize
+                            //     && target_nbytes > parallel_streams.len()
+                            // {
+                            //     target_nbytes
+                            //         + (parallel_streams.len() - 1) / parallel_streams.len()
+                            // } else {
+                            //     target_nbytes
+                            // };
 
-                            for bucket in data[..target_nbytes].chunks_mut(bucket_size) {
+                            let chunk_size = utils::chunk_size(target_nbytes, min_chunksize, nstreams);
+                            for bucket in data[..target_nbytes].chunks_mut(chunk_size) {
                                 state.lock().unwrap().nsubtasks += 1;
                                 streams_input[downstream_id]
                                     .send((&mut bucket[..], state.clone()))

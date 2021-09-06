@@ -101,7 +101,6 @@ pub struct BaguaNet {
 impl BaguaNet {
     const DEFAULT_SOCKET_MAX_COMMS: i32 = 65536;
     const DEFAULT_LISTEN_BACKLOG: i32 = 16384;
-    const DEFAULT_N_CONTROL_STREAM: i32 = 2;
 
     pub fn new() -> Result<BaguaNet, BaguaNetError> {
         let rank: i32 = std::env::var("RANK")
