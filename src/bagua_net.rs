@@ -508,7 +508,7 @@ impl BaguaNet {
 
         let mut ctrl_stream = None;
         let mut oredered_streams = std::collections::BTreeMap::new();
-        for _ in 0..self.nstreams + 1 {
+        for _ in 0..=self.nstreams {
             let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
                 Ok(listen) => listen,
                 Err(err) => {
