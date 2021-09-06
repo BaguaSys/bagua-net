@@ -464,11 +464,11 @@ impl BaguaNet {
                 // let send_nbytes = data.len().to_be_bytes();
                 // ctrl_stream.write_all(&send_nbytes[..]).await.unwrap();
                 ctrl_stream.write_u32(data.len() as u32).await.unwrap();
-                // println!(
-                //     "send to {:?} target_nbytes={}",
-                //     ctrl_stream.peer_addr(),
-                //     data.len()
-                // );
+                tracing::debug!(
+                    "send to {:?} target_nbytes={}",
+                    ctrl_stream.peer_addr(),
+                    data.len()
+                );
 
                 if data.len() != 0 {
                     let bucket_size =
@@ -584,11 +584,11 @@ impl BaguaNet {
                     }
                 };
 
-                // println!(
-                //     "{:?} recv target_nbytes={}",
-                //     ctrl_stream.local_addr(),
-                //     target_nbytes
-                // );
+                tracing::debug!(
+                    "{:?} recv target_nbytes={}",
+                    ctrl_stream.local_addr(),
+                    target_nbytes
+                );
 
                 if target_nbytes == 0 {
                     state.lock().unwrap().completed_subtasks += 1;
