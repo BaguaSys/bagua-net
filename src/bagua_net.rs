@@ -276,7 +276,11 @@ impl BaguaNet {
                 .unwrap_or("65536".to_owned())
                 .parse()
                 .unwrap(),
-            tokio_rt: tokio::runtime::Runtime::new().unwrap(),
+            tokio_rt: tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(4)
+                .enable_all()
+                .build()
+                .unwrap(),
         })
     }
 
@@ -400,13 +404,10 @@ impl BaguaNet {
                     continue;
                 }
 
-                let mut chunks = data.chunks(utils::chunk_size(
-                    data.len(),
-                    min_chunksize,
-                    nstreams,
-                ));
+                let mut chunks =
+                    data.chunks(utils::chunk_size(data.len(), min_chunksize, nstreams));
 
-                let mut datapass_fut = Vec::new();
+                let mut datapass_fut = Vec::with_capacity(stream_vec.len());
                 for stream in stream_vec.iter_mut() {
                     let chunk = match chunks.next() {
                         Some(b) => b,
@@ -540,12 +541,9 @@ impl BaguaNet {
                     continue;
                 }
 
-                let mut chunks = data.chunks_mut(utils::chunk_size(
-                    data.len(),
-                    min_chunksize,
-                    nstreams,
-                ));
-                let mut datapass_fut = Vec::new();
+                let mut chunks =
+                    data.chunks_mut(utils::chunk_size(data.len(), min_chunksize, nstreams));
+                let mut datapass_fut = Vec::with_capacity(stream_vec.len());
                 for stream in stream_vec.iter_mut() {
                     let chunk = match chunks.next() {
                         Some(b) => b,
