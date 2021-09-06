@@ -3,6 +3,7 @@ use nix::sys::socket::{AddressFamily, InetAddr, SockAddr};
 use std::fs;
 use std::io;
 use std::io::{Read, Write};
+use std::marker::PhantomData;
 
 pub fn get_net_if_speed(device: &str) -> i32 {
     const DEFAULT_SPEED: i32 = 10000;
@@ -197,6 +198,13 @@ pub fn parse_user_pass_and_addr(raw_url: &str) -> Option<(String, String, String
     }
 }
 
+pub fn chunk_size(total: usize, min_chunksize: usize, expected_nchunks: usize) -> usize {
+    let chunk_size = (total + expected_nchunks - 1) / expected_nchunks;
+    let chunk_size = std::cmp::max(chunk_size, min_chunksize);
+
+    chunk_size
+}
+
 /// Creates a `SockAddr` struct from libc's sockaddr.
 ///
 /// Supports only the following address families: Unix, Inet (v4 & v6), Netlink and System.
@@ -272,16 +280,22 @@ mod tests {
         assert_eq!(user, "");
         assert_eq!(pass, "");
         assert_eq!(addr, address);
+    }
 
-        match parse_user_pass_and_addr("106.12.175.12:19091") {
-            Some(ret) => {
-                println!("ret={:?}", ret);
-            },
-            None => {
-                println!("abc");
+    #[test]
+    fn test_chunks() {
+        let chunks = |total: usize, min_chunksize: usize, expected_nchunks: usize| -> usize {
+            let size = chunk_size(total, min_chunksize, expected_nchunks);
+
+            let mut chunk_count = total / size;
+            if total % size != 0 {
+                chunk_count += 1;
             }
+
+            chunk_count
         };
 
-        println!("{:?}", parse_user_pass_and_addr("106.12.175.12:19091").unwrap());
+        assert_eq!(chunks(1024, 1, 20), 20);
+        assert_eq!(chunks(1024, 1000, 20), 2);
     }
 }

@@ -179,6 +179,7 @@ dependencies = [
  "bytes",
  "ffi-convert",
  "flume",
+ "futures",
  "lazy_static",
  "libc",
  "nix",
