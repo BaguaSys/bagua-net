@@ -365,7 +365,7 @@ impl BaguaNet {
                     )));
                 }
             };
-            println!(
+            tracing::debug!(
                 "{:?} connect to {:?}",
                 stream.local_addr(),
                 socket_handle.addr.clone().to_str()
@@ -435,7 +435,7 @@ impl BaguaNet {
             }
         };
         ctrl_stream.write_all(&self.nstreams.to_be_bytes()[..]).unwrap();
-        println!(
+        tracing::debug!(
             "ctrl_stream {:?} connect to {:?}",
             ctrl_stream.local_addr(),
             ctrl_stream.peer_addr()
@@ -715,7 +715,6 @@ impl BaguaNet {
                 if task_completed {
                     send_req.trace_span.end();
                 }
-                // println!("send_req.state={:?}", state);
                 Ok((task_completed, state.nbytes_transferred))
             }
             SocketRequest::RecvRequest(recv_req) => {
@@ -728,7 +727,6 @@ impl BaguaNet {
                 if task_completed {
                     recv_req.trace_span.end();
                 }
-                // println!("recv_req.state={:?}", state);
                 Ok((task_completed, state.nbytes_transferred))
             }
         };
@@ -744,14 +742,14 @@ impl BaguaNet {
 
     pub fn close_send(&mut self, send_comm_id: SocketSendCommID) -> Result<(), BaguaNetError> {
         self.send_comm_map.remove(&send_comm_id);
-        println!("close_send send_comm_id={}", send_comm_id);
+        tracing::debug!("close_send send_comm_id={}", send_comm_id);
 
         Ok(())
     }
 
     pub fn close_recv(&mut self, recv_comm_id: SocketRecvCommID) -> Result<(), BaguaNetError> {
         self.recv_comm_map.remove(&recv_comm_id);
-        println!("close_recv recv_comm_id={}", recv_comm_id);
+        tracing::debug!("close_recv recv_comm_id={}", recv_comm_id);
 
         Ok(())
     }
