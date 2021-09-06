@@ -350,7 +350,7 @@ impl BaguaNet {
         socket_handle: SocketHandle,
     ) -> Result<SocketSendCommID, BaguaNetError> {
         let mut streams_input = Vec::new();
-        for i in 0..self.nstreams {
+        for stream_id in 0..self.nstreams {
             let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
                 Ok(stream) => stream,
                 Err(err) => {
@@ -370,21 +370,22 @@ impl BaguaNet {
                 stream.local_addr(),
                 socket_handle.addr.clone().to_str()
             );
-            stream.set_nodelay(true).unwrap();
-            stream
-                .set_write_timeout(Some(Duration::from_secs_f64(30.)))
-                .unwrap();
-            match stream.write_all(&i.to_be_bytes()[..]) {
-                Err(err) => {
-                    std::panic!(
-                        "err={:?}, {:?} connect to {:?}",
-                        err,
-                        stream.local_addr(),
-                        socket_handle.addr.clone().to_str()
-                    );
-                }
-                Ok(_) => {}
-            };
+            stream.write_all(&stream_id.to_be_bytes()[..]).unwrap();
+            // stream.set_nodelay(true).unwrap();
+            // stream
+            //     .set_write_timeout(Some(Duration::from_secs_f64(30.)))
+            //     .unwrap();
+            // match stream.write_all(&stream_id.to_be_bytes()[..]) {
+            //     Err(err) => {
+            //         std::panic!(
+            //             "err={:?}, {:?} connect to {:?}",
+            //             err,
+            //             stream.local_addr(),
+            //             socket_handle.addr.clone().to_str()
+            //         );
+            //     }
+            //     Ok(_) => {}
+            // };
 
             let (msg_sender, mut msg_receiver) =
                 mpsc::unbounded_channel::<(&'static [u8], Arc<Mutex<RequestState>>)>();
@@ -419,7 +420,7 @@ impl BaguaNet {
             streams_input.push(msg_sender);
         }
 
-        let ctrl_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+        let mut ctrl_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
             Ok(ctrl_stream) => ctrl_stream,
             Err(err) => {
                 tracing::warn!(
@@ -433,6 +434,7 @@ impl BaguaNet {
                 )));
             }
         };
+        ctrl_stream.write_all(&self.nstreams.to_be_bytes()[..]).unwrap();
         println!(
             "ctrl_stream {:?} connect to {:?}",
             ctrl_stream.local_addr(),
@@ -503,36 +505,34 @@ impl BaguaNet {
         listen_comm_id: SocketListenCommID,
     ) -> Result<SocketRecvCommID, BaguaNetError> {
         let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
-        let mut streams_input = Vec::new();
-        for i in 0..self.nstreams {
+
+        let mut ctrl_stream = None;
+        let mut oredered_streams = std::collections::BTreeMap::new();
+        for _ in 0..self.nstreams + 1 {
             let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
                 Ok(listen) => listen,
                 Err(err) => {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
                 }
             };
-            println!("{:?} accept addr={:?}", stream.local_addr(), _addr.clone());
-            let mut size_bytes = (0 as usize).to_be_bytes();
-            stream.set_nodelay(true).unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs_f64(30.)))
-                .unwrap();
-            match stream.read_exact(&mut size_bytes[..]) {
-                Err(err) => {
-                    std::panic!(
-                        "err={:?}, {:?} accept addr={:?}",
-                        err,
-                        stream.local_addr(),
-                        _addr.clone()
-                    );
-                }
-                Ok(_) => {}
-            };
-            // println!("i={}, size_bytes={}", i, usize::from_be_bytes(size_bytes));
 
+            let mut stream_id = (0 as usize).to_be_bytes();
+            stream.read_exact(&mut stream_id[..]).unwrap();
+            let stream_id = usize::from_be_bytes(stream_id);
+
+            if stream_id == self.nstreams {
+                ctrl_stream = Some(stream);
+            } else {
+                oredered_streams.insert(stream_id, stream).unwrap();
+            }
+        }
+        let ctrl_stream = ctrl_stream.unwrap();
+
+        let mut streams_input = Vec::new();
+        for (_, stream) in oredered_streams.into_iter() {
             let (msg_sender, mut msg_receiver) =
                 mpsc::unbounded_channel::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
-            let metrics = self.state.clone();
+            // let metrics = self.state.clone();
             self.tokio_rt.spawn(async move {
                 let mut stream = tokio::net::TcpStream::from_std(stream).unwrap();
                 stream.set_nodelay(true).unwrap();
@@ -558,15 +558,6 @@ impl BaguaNet {
             });
             streams_input.push(msg_sender);
         }
-
-        let (ctrl_stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
-            Ok(listen) => listen,
-            Err(err) => {
-                return Err(BaguaNetError::TCPError(format!("{:?}", err)));
-            }
-        };
-
-        println!("listen on local_addr={:?}", ctrl_stream.local_addr());
 
         let (msg_sender, mut msg_receiver) = mpsc::unbounded_channel();
         let task_split_threshold = self.task_split_threshold;
