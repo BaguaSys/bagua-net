@@ -1,13 +1,13 @@
 #[macro_use]
 extern crate lazy_static;
 
-mod interface;
 mod implement;
+mod interface;
 mod utils;
 
-use implement::tokio_backend;
-use interface::{Net, NCCLNetProperties, SocketHandle};
 use ffi_convert::{AsRust, CDrop, CReprOf};
+use implement::{nthread_per_socket_backend, tokio_backend};
+use interface::{NCCLNetProperties, Net, SocketHandle};
 use libc;
 use std::sync::{Arc, Mutex};
 
@@ -17,11 +17,12 @@ pub struct BaguaNetC {
 
 #[no_mangle]
 pub extern "C" fn bagua_net_c_create() -> *mut BaguaNetC {
-    let config = std::env::var("BAGUA_NET_IMPLEMENT").unwrap_or("TOKIO".to_owned()).to_uppercase();
+    let config = std::env::var("BAGUA_NET_IMPLEMENT")
+        .unwrap_or("TOKIO".to_owned())
+        .to_uppercase();
     let bagua_net: Box<dyn Net> = match &config[..] {
-        "TOKIO" => {
-            Box::new(tokio_backend::BaguaNet::new().unwrap())
-        },
+        "TOKIO" => Box::new(tokio_backend::BaguaNet::new().unwrap()),
+        "BASIC" => Box::new(nthread_per_socket_backend::BaguaNet::new().unwrap()),
         _ => {
             return std::ptr::null_mut();
         }
@@ -314,7 +315,7 @@ pub extern "C" fn bagua_net_c_test(
                 if let_done && !bytes.is_null() {
                     *bytes = let_bytes;
                 }
-            },
+            }
             Err(err) => {
                 tracing::warn!("{:?}", err);
                 return -3;
