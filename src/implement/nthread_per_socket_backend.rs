@@ -308,7 +308,7 @@ impl Net for BaguaNet {
     ) -> Result<SocketSendCommID, BaguaNetError> {
         let mut parallel_streams = Vec::new();
         let mut streams_input = Vec::new();
-        for _ in 0..self.nstreams {
+        for stream_id in 0..self.nstreams {
             let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
                 Ok(stream) => stream,
                 Err(err) => {
@@ -323,6 +323,8 @@ impl Net for BaguaNet {
                     )));
                 }
             };
+            stream.write_all(&stream_id.to_be_bytes()[..]).unwrap();
+
             stream.set_nodelay(true).unwrap();
             stream.set_nonblocking(true).unwrap();
 
@@ -359,8 +361,9 @@ impl Net for BaguaNet {
             streams_input.push(msg_sender);
         }
 
-        let mut master_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
-            Ok(master_stream) => master_stream,
+        let nstreams = self.nstreams;
+        let mut ctrl_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+            Ok(ctrl_stream) => ctrl_stream,
             Err(err) => {
                 tracing::warn!(
                     "net::TcpStream::connect failed, err={:?}, socket_handle={:?}",
@@ -373,8 +376,9 @@ impl Net for BaguaNet {
                 )));
             }
         };
-        master_stream.set_nodelay(true).unwrap();
-        master_stream.set_nonblocking(true).unwrap();
+        ctrl_stream.write_all(&nstreams.to_be_bytes()[..]).unwrap();
+        ctrl_stream.set_nodelay(true).unwrap();
+        ctrl_stream.set_nonblocking(true).unwrap();
 
         let (msg_sender, msg_receiver) = flume::unbounded();
         let task_split_threshold = self.task_split_threshold;
@@ -388,7 +392,7 @@ impl Net for BaguaNet {
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let send_nbytes = data.len().to_be_bytes();
-                        utils::nonblocking_write_all(&mut master_stream, &send_nbytes[..]).unwrap();
+                        utils::nonblocking_write_all(&mut ctrl_stream, &send_nbytes[..]).unwrap();
 
                         if data.len() != 0 {
                             let bucket_size = if data.len() >= task_split_threshold
@@ -422,14 +426,24 @@ impl Net for BaguaNet {
     ) -> Result<SocketRecvCommID, BaguaNetError> {
         let listen_comm = self.listen_comm_map.get(&listen_comm_id).unwrap();
         let mut parallel_streams = Vec::new();
-        let mut streams_input = Vec::new();
-        for _ in 0..self.nstreams {
+        let mut ctrl_stream = None;
+        let mut streams_input = std::collections::BTreeMap::new();
+        for _ in 0..=self.nstreams {
             let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
                 Ok(listen) => listen,
                 Err(err) => {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
                 }
             };
+            let mut stream_id = (0 as usize).to_be_bytes();
+            stream.read_exact(&mut stream_id[..]).unwrap();
+            let stream_id = usize::from_be_bytes(stream_id);
+
+            if stream_id == self.nstreams {
+                ctrl_stream = Some(stream);
+                continue;
+            }
+
             stream.set_nodelay(true).unwrap();
             stream.set_nonblocking(true).unwrap();
 
@@ -452,17 +466,16 @@ impl Net for BaguaNet {
                     };
                 }
             }));
-            streams_input.push(msg_sender);
+            streams_input.insert(stream_id, msg_sender);
         }
+        let mut ctrl_stream = ctrl_stream.unwrap();
+        let streams_input: Vec<_> = streams_input
+            .into_iter()
+            .map(|(_, stream)| stream)
+            .collect();
 
-        let (mut master_stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
-            Ok(listen) => listen,
-            Err(err) => {
-                return Err(BaguaNetError::TCPError(format!("{:?}", err)));
-            }
-        };
-        master_stream.set_nodelay(true).unwrap();
-        master_stream.set_nonblocking(true).unwrap();
+        ctrl_stream.set_nodelay(true).unwrap();
+        ctrl_stream.set_nonblocking(true).unwrap();
 
         let (msg_sender, msg_receiver) = flume::unbounded();
         let task_split_threshold = self.task_split_threshold;
@@ -476,7 +489,7 @@ impl Net for BaguaNet {
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let mut target_nbytes = data.len().to_be_bytes();
-                        utils::nonblocking_read_exact(&mut master_stream, &mut target_nbytes[..])
+                        utils::nonblocking_read_exact(&mut ctrl_stream, &mut target_nbytes[..])
                             .unwrap();
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
