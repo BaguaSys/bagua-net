@@ -1,6 +1,10 @@
+use crate::interface;
+use crate::interface::{
+    BaguaNetError, NCCLNetProperties, Net, SocketHandle, SocketListenCommID, SocketRecvCommID,
+    SocketRequestID, SocketSendCommID,
+};
 use crate::utils;
 use crate::utils::NCCLSocketDev;
-use bytes::{BufMut, BytesMut};
 use nix::sys::socket::{InetAddr, SockAddr};
 use opentelemetry::{
     metrics::{BoundValueRecorder, ObserverResult},
@@ -12,8 +16,6 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
@@ -22,22 +24,6 @@ const NCCL_PTR_CUDA: i32 = 2;
 
 lazy_static! {
     static ref HANDLER_ALL: [KeyValue; 1] = [KeyValue::new("handler", "all")];
-}
-
-#[derive(Debug)]
-pub struct NCCLNetProperties {
-    pub name: String,
-    pub pci_path: String,
-    pub guid: u64,
-    pub ptr_support: i32, // NCCL_PTR_HOST or NCCL_PTR_HOST|NCCL_PTR_CUDA
-    pub speed: i32,       // Port speed in Mbps.
-    pub port: i32,
-    pub max_comms: i32,
-}
-
-#[derive(Debug)]
-pub struct SocketHandle {
-    pub addr: nix::sys::socket::SockAddr,
 }
 
 pub struct SocketListenComm {
@@ -53,16 +39,6 @@ pub struct SocketSendComm {
 #[derive(Clone)]
 pub struct SocketRecvComm {
     pub msg_sender: mpsc::UnboundedSender<(&'static mut [u8], Arc<Mutex<RequestState>>)>,
-}
-
-#[derive(Error, Debug, Clone)]
-pub enum BaguaNetError {
-    #[error("io error")]
-    IOError(String),
-    #[error("tcp error")]
-    TCPError(String),
-    #[error("inner error")]
-    InnerError(String),
 }
 
 pub struct SocketSendRequest {
@@ -102,11 +78,6 @@ struct AppState {
     // irecv_nbytes_gauge: BoundValueRecorder<'static, u64>,
     uploader: std::thread::JoinHandle<()>,
 }
-
-type SocketListenCommID = usize;
-type SocketSendCommID = usize;
-type SocketRecvCommID = usize;
-type SocketRequestID = usize;
 
 pub struct BaguaNet {
     pub socket_devs: Vec<NCCLSocketDev>,
@@ -279,7 +250,7 @@ impl BaguaNet {
             tokio_rt: tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(
                     std::env::var("BAGUA_NET_TOKIO_WORKER_THREADS")
-                        .unwrap_or("4".to_owned())
+                        .unwrap_or("2".to_owned())
                         .parse()
                         .unwrap(),
                 )
@@ -288,12 +259,14 @@ impl BaguaNet {
                 .unwrap(),
         })
     }
+}
 
-    pub fn devices(&self) -> Result<usize, BaguaNetError> {
+impl interface::Net for BaguaNet {
+    fn devices(&self) -> Result<usize, BaguaNetError> {
         Ok(self.socket_devs.len())
     }
 
-    pub fn get_properties(&self, dev_id: usize) -> Result<NCCLNetProperties, BaguaNetError> {
+    fn get_properties(&self, dev_id: usize) -> Result<NCCLNetProperties, BaguaNetError> {
         let socket_dev = &self.socket_devs[dev_id];
 
         Ok(NCCLNetProperties {
@@ -307,7 +280,7 @@ impl BaguaNet {
         })
     }
 
-    pub fn listen(
+    fn listen(
         &mut self,
         dev_id: usize,
     ) -> Result<(SocketHandle, SocketListenCommID), BaguaNetError> {
@@ -353,7 +326,7 @@ impl BaguaNet {
         Ok((socket_handle, id))
     }
 
-    pub fn connect(
+    fn connect(
         &mut self,
         _dev_id: usize,
         socket_handle: SocketHandle,
@@ -495,7 +468,7 @@ impl BaguaNet {
         Ok(id)
     }
 
-    pub fn accept(
+    fn accept(
         &mut self,
         listen_comm_id: SocketListenCommID,
     ) -> Result<SocketRecvCommID, BaguaNetError> {
@@ -610,7 +583,7 @@ impl BaguaNet {
         Ok(id)
     }
 
-    pub fn isend(
+    fn isend(
         &mut self,
         send_comm_id: SocketSendCommID,
         data: &'static [u8],
@@ -646,7 +619,7 @@ impl BaguaNet {
         Ok(id)
     }
 
-    pub fn irecv(
+    fn irecv(
         &mut self,
         recv_comm_id: SocketRecvCommID,
         data: &'static mut [u8],
@@ -681,7 +654,7 @@ impl BaguaNet {
         Ok(id)
     }
 
-    pub fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
+    fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
         let request = self.socket_request_map.get_mut(&request_id).unwrap();
         let ret = match request {
             SocketRequest::SendRequest(send_req) => {
@@ -719,24 +692,21 @@ impl BaguaNet {
         ret
     }
 
-    pub fn close_send(&mut self, send_comm_id: SocketSendCommID) -> Result<(), BaguaNetError> {
+    fn close_send(&mut self, send_comm_id: SocketSendCommID) -> Result<(), BaguaNetError> {
         self.send_comm_map.remove(&send_comm_id);
         tracing::debug!("close_send send_comm_id={}", send_comm_id);
 
         Ok(())
     }
 
-    pub fn close_recv(&mut self, recv_comm_id: SocketRecvCommID) -> Result<(), BaguaNetError> {
+    fn close_recv(&mut self, recv_comm_id: SocketRecvCommID) -> Result<(), BaguaNetError> {
         self.recv_comm_map.remove(&recv_comm_id);
         tracing::debug!("close_recv recv_comm_id={}", recv_comm_id);
 
         Ok(())
     }
 
-    pub fn close_listen(
-        &mut self,
-        listen_comm_id: SocketListenCommID,
-    ) -> Result<(), BaguaNetError> {
+    fn close_listen(&mut self, listen_comm_id: SocketListenCommID) -> Result<(), BaguaNetError> {
         self.listen_comm_map.remove(&listen_comm_id);
 
         Ok(())
@@ -754,25 +724,9 @@ impl Drop for BaguaNet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nix::sys::socket::{InetAddr, IpAddr, SockAddr};
 
     #[test]
     fn it_works() {
         BaguaNet::new().unwrap();
-    }
-
-    #[test]
-    fn test_socket_handle() {
-        let addr = InetAddr::new(IpAddr::new_v4(127, 0, 0, 1), 8123);
-        let socket_handle = SocketHandle {
-            addr: SockAddr::new_inet(addr),
-        };
-
-        let addr = unsafe {
-            let (c_sockaddr, _) = socket_handle.addr.as_ffi_pair();
-            utils::from_libc_sockaddr(c_sockaddr).unwrap()
-        };
-
-        assert_eq!(addr.to_str(), "127.0.0.1:8123");
     }
 }

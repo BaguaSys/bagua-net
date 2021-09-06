@@ -1,21 +1,31 @@
 #[macro_use]
 extern crate lazy_static;
 
-mod bagua_net;
+mod interface;
+mod implement;
 mod utils;
 
-use bagua_net::{BaguaNet, NCCLNetProperties, SocketHandle};
+use implement::tokio_backend;
+use interface::{Net, NCCLNetProperties, SocketHandle};
 use ffi_convert::{AsRust, CDrop, CReprOf};
 use libc;
 use std::sync::{Arc, Mutex};
 
 pub struct BaguaNetC {
-    inner: Arc<Mutex<BaguaNet>>,
+    inner: Arc<Mutex<Box<dyn Net>>>,
 }
 
 #[no_mangle]
 pub extern "C" fn bagua_net_c_create() -> *mut BaguaNetC {
-    let bagua_net = BaguaNet::new().unwrap();
+    let config = std::env::var("BAGUA_NET_IMPLEMENT").unwrap_or("TOKIO".to_owned()).to_uppercase();
+    let bagua_net: Box<dyn Net> = match &config[..] {
+        "TOKIO" => {
+            Box::new(tokio_backend::BaguaNet::new().unwrap())
+        },
+        _ => {
+            return std::ptr::null_mut();
+        }
+    };
     let obj = BaguaNetC {
         inner: Arc::new(Mutex::new(bagua_net)),
     };
