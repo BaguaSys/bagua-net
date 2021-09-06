@@ -277,7 +277,12 @@ impl BaguaNet {
                 .parse()
                 .unwrap(),
             tokio_rt: tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(8)
+                .worker_threads(
+                    std::env::var("BAGUA_NET_TOKIO_WORKER_THREADS")
+                        .unwrap_or("4".to_owned())
+                        .parse()
+                        .unwrap(),
+                )
                 .enable_all()
                 .build()
                 .unwrap(),
