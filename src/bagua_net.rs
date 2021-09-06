@@ -467,7 +467,14 @@ impl BaguaNet {
                     None => break,
                 };
 
-                ctrl_stream.write_u32(data.len() as u32).await.unwrap();
+                match ctrl_stream.write_u32(data.len() as u32).await {
+                    Ok(_) => {}
+                    Err(err) => {
+                        state.lock().unwrap().err =
+                            Some(BaguaNetError::IOError(format!("{:?}", err)));
+                        break;
+                    }
+                };
                 tracing::debug!(
                     "send to {:?} target_nbytes={}",
                     ctrl_stream.peer_addr(),
@@ -576,7 +583,14 @@ impl BaguaNet {
                     None => break,
                 };
 
-                let target_nbytes = ctrl_stream.read_u32().await.unwrap() as usize;
+                let target_nbytes = match ctrl_stream.read_u32().await {
+                    Ok(n) => n as usize,
+                    Err(err) => {
+                        state.lock().unwrap().err =
+                            Some(BaguaNetError::IOError(format!("{:?}", err)));
+                        break;
+                    }
+                };
                 tracing::debug!(
                     "{:?} recv target_nbytes={}",
                     ctrl_stream.local_addr(),
