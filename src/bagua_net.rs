@@ -123,7 +123,7 @@ pub struct BaguaNet {
     pub rank: i32,
     state: Arc<AppState>,
     nstreams: usize,
-    task_split_threshold: usize,
+    min_chunksize: usize,
     tokio_rt: tokio::runtime::Runtime,
 }
 
@@ -272,8 +272,8 @@ impl BaguaNet {
                 .unwrap_or("2".to_owned())
                 .parse()
                 .unwrap(),
-            task_split_threshold: std::env::var("BAGUA_NET_TASK_SPLIT_THRESHOLD")
-                .unwrap_or("1048576".to_owned())
+            min_chunksize: std::env::var("BAGUA_NET_MIN_CHUNKSIZE")
+                .unwrap_or("65536".to_owned())
                 .parse()
                 .unwrap(),
             tokio_rt: tokio::runtime::Runtime::new().unwrap(),
@@ -377,7 +377,7 @@ impl BaguaNet {
         }
 
         // Launch async datapass pipeline
-        let task_split_threshold = self.task_split_threshold;
+        let min_chunksize = self.min_chunksize;
         let (datapass_sender, mut datapass_receiver) =
             mpsc::unbounded_channel::<(&'static [u8], Arc<Mutex<RequestState>>)>();
         self.tokio_rt.spawn(async move {
@@ -402,7 +402,7 @@ impl BaguaNet {
 
                 let mut chunks = data.chunks(utils::chunk_size(
                     data.len(),
-                    task_split_threshold,
+                    min_chunksize,
                     nstreams,
                 ));
 
@@ -517,7 +517,7 @@ impl BaguaNet {
         }
         let ctrl_stream = ctrl_stream.unwrap();
 
-        let task_split_threshold = self.task_split_threshold;
+        let min_chunksize = self.min_chunksize;
         let (datapass_sender, mut datapass_receiver) =
             mpsc::unbounded_channel::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
         self.tokio_rt.spawn(async move {
@@ -542,7 +542,7 @@ impl BaguaNet {
 
                 let mut chunks = data.chunks_mut(utils::chunk_size(
                     data.len(),
-                    task_split_threshold,
+                    min_chunksize,
                     nstreams,
                 ));
                 let mut datapass_fut = Vec::new();
