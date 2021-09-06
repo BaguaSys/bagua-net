@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
@@ -364,8 +365,25 @@ impl BaguaNet {
                     )));
                 }
             };
-            println!("{:?} connect to {:?}", stream.local_addr(), socket_handle.addr.clone().to_str());
-            stream.write_all(&i.to_be_bytes()[..]).unwrap();
+            println!(
+                "{:?} connect to {:?}",
+                stream.local_addr(),
+                socket_handle.addr.clone().to_str()
+            );
+            stream
+                .set_write_timeout(Some(Duration::from_secs_f64(30.)))
+                .unwrap();
+            match stream.write_all(&i.to_be_bytes()[..]) {
+                Err(err) => {
+                    std::panic!(
+                        "err={:?}, {:?} connect to {:?}",
+                        err,
+                        stream.local_addr(),
+                        socket_handle.addr.clone().to_str()
+                    );
+                }
+                Ok(_) => {}
+            };
 
             let (msg_sender, mut msg_receiver) =
                 mpsc::unbounded_channel::<(&'static [u8], Arc<Mutex<RequestState>>)>();
@@ -414,7 +432,11 @@ impl BaguaNet {
                 )));
             }
         };
-        println!("ctrl_stream {:?} connect to {:?}", ctrl_stream.local_addr(), ctrl_stream.peer_addr());
+        println!(
+            "ctrl_stream {:?} connect to {:?}",
+            ctrl_stream.local_addr(),
+            ctrl_stream.peer_addr()
+        );
 
         let (msg_sender, mut msg_receiver) = tokio::sync::mpsc::unbounded_channel();
         let task_split_threshold = self.task_split_threshold;
@@ -439,7 +461,11 @@ impl BaguaNet {
                 // let send_nbytes = data.len().to_be_bytes();
                 // ctrl_stream.write_all(&send_nbytes[..]).await.unwrap();
                 ctrl_stream.write_u32(data.len() as u32).await.unwrap();
-                println!("send to {:?} target_nbytes={}", ctrl_stream.peer_addr(), data.len());
+                println!(
+                    "send to {:?} target_nbytes={}",
+                    ctrl_stream.peer_addr(),
+                    data.len()
+                );
 
                 if data.len() != 0 {
                     let bucket_size =
@@ -486,7 +512,20 @@ impl BaguaNet {
             };
             println!("{:?} accept addr={:?}", stream.local_addr(), _addr.clone());
             let mut size_bytes = (0 as usize).to_be_bytes();
-            stream.read_exact(&mut size_bytes[..]).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs_f64(30.)))
+                .unwrap();
+            match stream.read_exact(&mut size_bytes[..]) {
+                Err(err) => {
+                    std::panic!(
+                        "err={:?}, {:?} accept addr={:?}",
+                        err,
+                        stream.local_addr(),
+                        _addr.clone()
+                    );
+                }
+                Ok(_) => {}
+            };
             // println!("i={}, size_bytes={}", i, usize::from_be_bytes(size_bytes));
 
             let (msg_sender, mut msg_receiver) =
@@ -547,7 +586,7 @@ impl BaguaNet {
                     Ok(nbytes) => nbytes as usize,
                     Err(err) => {
                         state.lock().unwrap().err =
-                        Some(BaguaNetError::InnerError(format!("{:?}", err)));
+                            Some(BaguaNetError::InnerError(format!("{:?}", err)));
                         return;
                     }
                 };
@@ -559,7 +598,11 @@ impl BaguaNet {
                 // }
                 // let target_nbytes = usize::from_be_bytes(target_nbytes);
 
-                println!("{:?} recv target_nbytes={}", ctrl_stream.local_addr(), target_nbytes);
+                println!(
+                    "{:?} recv target_nbytes={}",
+                    ctrl_stream.local_addr(),
+                    target_nbytes
+                );
 
                 if target_nbytes == 0 {
                     state.lock().unwrap().completed_subtasks += 1;
