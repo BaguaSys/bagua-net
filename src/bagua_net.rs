@@ -370,6 +370,7 @@ impl BaguaNet {
                 stream.local_addr(),
                 socket_handle.addr.clone().to_str()
             );
+            stream.set_nodelay(true).unwrap();
             stream
                 .set_write_timeout(Some(Duration::from_secs_f64(30.)))
                 .unwrap();
@@ -512,6 +513,7 @@ impl BaguaNet {
             };
             println!("{:?} accept addr={:?}", stream.local_addr(), _addr.clone());
             let mut size_bytes = (0 as usize).to_be_bytes();
+            stream.set_nodelay(true).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs_f64(30.)))
                 .unwrap();
