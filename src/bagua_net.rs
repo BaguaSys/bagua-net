@@ -520,7 +520,7 @@ impl BaguaNet {
             stream.read_exact(&mut stream_id[..]).unwrap();
             let stream_id = usize::from_be_bytes(stream_id);
 
-            println!("stream_id={}", stream_id);
+            println!("self.nstreams={}, stream_id={}", self.nstreams, stream_id);
 
             if stream_id == self.nstreams {
                 ctrl_stream = Some(stream);
