@@ -224,6 +224,15 @@ impl BaguaNet {
             }),
         });
 
+        let tokio_rt = match std::env::var("BAGUA_NET_TOKIO_WORKER_THREADS") {
+            Ok(nworker_thread) => tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(nworker_thread.parse().unwrap())
+                .enable_all()
+                .build()
+                .unwrap(),
+            Err(_) => tokio::runtime::Runtime::new().unwrap(),
+        };
+
         Ok(Self {
             socket_devs: utils::find_interfaces(),
             listen_comm_next_id: 0,
@@ -243,19 +252,10 @@ impl BaguaNet {
                 .parse()
                 .unwrap(),
             min_chunksize: std::env::var("BAGUA_NET_MIN_CHUNKSIZE")
-                .unwrap_or("65536".to_owned())
+                .unwrap_or("131072".to_owned())
                 .parse()
                 .unwrap(),
-            tokio_rt: tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(
-                    std::env::var("BAGUA_NET_TOKIO_WORKER_THREADS")
-                        .unwrap_or("2".to_owned())
-                        .parse()
-                        .unwrap(),
-                )
-                .enable_all()
-                .build()
-                .unwrap(),
+            tokio_rt: tokio_rt,
         })
     }
 }

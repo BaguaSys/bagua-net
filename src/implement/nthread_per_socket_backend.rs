@@ -229,7 +229,7 @@ impl BaguaNet {
                 .parse()
                 .unwrap(),
             min_chunksize: std::env::var("BAGUA_NET_MIN_CHUNKSIZE")
-                .unwrap_or("65536".to_owned())
+                .unwrap_or("1048576".to_owned())
                 .parse()
                 .unwrap(),
         })
