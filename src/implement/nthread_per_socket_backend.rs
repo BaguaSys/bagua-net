@@ -56,6 +56,7 @@ pub struct RequestState {
     pub nsubtasks: usize,
     pub completed_subtasks: usize,
     pub nbytes_transferred: usize,
+    pub err: Option<BaguaNetError>,
 }
 
 pub enum SocketRequest {
@@ -392,16 +393,15 @@ impl Net for BaguaNet {
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let send_nbytes = data.len().to_be_bytes();
-                        utils::nonblocking_write_all(&mut ctrl_stream, &send_nbytes[..]).unwrap();
+                        if let Err(err) =
+                            utils::nonblocking_write_all(&mut ctrl_stream, &send_nbytes[..])
+                        {
+                            state.lock().unwrap().err =
+                                Some(BaguaNetError::IOError(format!("{:?}", err)));
+                            break;
+                        }
 
                         if data.len() != 0 {
-                            // let bucket_size = if data.len() >= min_chunksize
-                            //     && data.len() > parallel_streams.len()
-                            // {
-                            //     data.len() + (parallel_streams.len() - 1) / parallel_streams.len()
-                            // } else {
-                            //     data.len()
-                            // };
                             let chunk_size = utils::chunk_size(data.len(), min_chunksize, nstreams);
 
                             for bucket in data.chunks(chunk_size) {
@@ -492,21 +492,18 @@ impl Net for BaguaNet {
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
                         let mut target_nbytes = data.len().to_be_bytes();
-                        utils::nonblocking_read_exact(&mut ctrl_stream, &mut target_nbytes[..])
-                            .unwrap();
+                        if let Err(err) =
+                            utils::nonblocking_read_exact(&mut ctrl_stream, &mut target_nbytes[..])
+                        {
+                            state.lock().unwrap().err =
+                                Some(BaguaNetError::IOError(format!("{:?}", err)));
+                            break;
+                        }
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
                         if target_nbytes != 0 {
-                            // let bucket_size = if target_nbytes >= min_chunksize
-                            //     && target_nbytes > parallel_streams.len()
-                            // {
-                            //     target_nbytes
-                            //         + (parallel_streams.len() - 1) / parallel_streams.len()
-                            // } else {
-                            //     target_nbytes
-                            // };
-
-                            let chunk_size = utils::chunk_size(target_nbytes, min_chunksize, nstreams);
+                            let chunk_size =
+                                utils::chunk_size(target_nbytes, min_chunksize, nstreams);
                             for bucket in data[..target_nbytes].chunks_mut(chunk_size) {
                                 state.lock().unwrap().nsubtasks += 1;
                                 streams_input[downstream_id]
@@ -545,6 +542,7 @@ impl Net for BaguaNet {
             nsubtasks: 1,
             completed_subtasks: 0,
             nbytes_transferred: 0,
+            err: None,
         }));
         self.socket_request_map.insert(
             id,
@@ -579,6 +577,7 @@ impl Net for BaguaNet {
             nsubtasks: 1,
             completed_subtasks: 0,
             nbytes_transferred: 0,
+            err: None,
         }));
         self.socket_request_map.insert(
             id,
@@ -598,8 +597,11 @@ impl Net for BaguaNet {
         let ret = match request {
             SocketRequest::SendRequest(send_req) => {
                 let state = send_req.state.lock().unwrap();
-                let task_completed = state.nsubtasks == state.completed_subtasks;
+                if let Some(err) = state.err.clone() {
+                    return Err(err);
+                }
 
+                let task_completed = state.nsubtasks == state.completed_subtasks;
                 if task_completed {
                     send_req.trace_span.end();
                 }
@@ -607,8 +609,11 @@ impl Net for BaguaNet {
             }
             SocketRequest::RecvRequest(recv_req) => {
                 let state = recv_req.state.lock().unwrap();
-                let task_completed = state.nsubtasks == state.completed_subtasks;
+                if let Some(err) = state.err.clone() {
+                    return Err(err);
+                }
 
+                let task_completed = state.nsubtasks == state.completed_subtasks;
                 if task_completed {
                     recv_req.trace_span.end();
                 }

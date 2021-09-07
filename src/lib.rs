@@ -18,7 +18,7 @@ pub struct BaguaNetC {
 #[no_mangle]
 pub extern "C" fn bagua_net_c_create() -> *mut BaguaNetC {
     let config = std::env::var("BAGUA_NET_IMPLEMENT")
-        .unwrap_or("TOKIO".to_owned())
+        .unwrap_or("BASIC".to_owned())
         .to_uppercase();
     let bagua_net: Box<dyn Net> = match &config[..] {
         "TOKIO" => Box::new(tokio_backend::BaguaNet::new().unwrap()),
