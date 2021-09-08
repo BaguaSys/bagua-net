@@ -667,7 +667,7 @@ impl interface::Net for BaguaNet {
 
     fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
         self.test_count += 1;
-        if self.test_count % 100000 == 0 {
+        if self.test_count % 1000000 == 0 {
             let send_request_count = self
                 .socket_request_map
                 .iter()
