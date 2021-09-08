@@ -72,6 +72,7 @@ struct AppState {
     isend_nbytes_gauge: BoundValueRecorder<'static, u64>,
     irecv_nbytes_gauge: BoundValueRecorder<'static, u64>,
     isend_per_second: Arc<Mutex<f64>>,
+    request_count: Arc<Mutex<usize>>,
     isend_nbytes_per_second: Arc<Mutex<f64>>,
     isend_percentage_of_effective_time: Arc<Mutex<f64>>,
     // isend_nbytes_gauge: BoundValueRecorder<'static, u64>,
@@ -145,6 +146,7 @@ impl BaguaNet {
         let isend_nbytes_per_second = Arc::new(Mutex::new(0.));
         let isend_percentage_of_effective_time = Arc::new(Mutex::new(0.));
         let isend_per_second = Arc::new(Mutex::new(0.));
+        let request_count = Arc::new(Mutex::new(0));
 
         let meter = opentelemetry::global::meter("bagua-net");
         let isend_nbytes_per_second_clone = isend_nbytes_per_second.clone();
@@ -180,6 +182,13 @@ impl BaguaNet {
                 },
             )
             .init();
+        let request_count_clone = request_count.clone();
+        meter.i64_value_observer("hold_on_request", move |res: ObserverResult<i64>| {
+            res.observe(
+                *request_count_clone.lock().unwrap() as i64,
+                HANDLER_ALL.as_ref(),
+            );
+        });
         let state = Arc::new(AppState {
             exporter: prom_exporter.clone(),
             isend_nbytes_gauge: meter
@@ -190,6 +199,7 @@ impl BaguaNet {
                 .u64_value_recorder("irecv_nbytes")
                 .init()
                 .bind(HANDLER_ALL.as_ref()),
+            request_count: request_count,
             isend_per_second: isend_per_second,
             isend_nbytes_per_second: isend_nbytes_per_second,
             isend_percentage_of_effective_time: isend_percentage_of_effective_time,
@@ -654,6 +664,7 @@ impl interface::Net for BaguaNet {
     }
 
     fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
+        *self.state.request_count.lock().unwrap() = self.socket_request_map.len();
         let request = self.socket_request_map.get_mut(&request_id).unwrap();
         let ret = match request {
             SocketRequest::SendRequest(send_req) => {
