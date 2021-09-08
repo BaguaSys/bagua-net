@@ -429,7 +429,7 @@ impl Net for BaguaNet {
             ctrl_stream.peer_addr()
         );
 
-        let (msg_sender, mut msg_receiver) = flume::unbounded();
+        let (msg_sender, msg_receiver) = flume::unbounded();
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
         let send_comm = SocketSendComm {
@@ -458,7 +458,7 @@ impl Net for BaguaNet {
                     data.len()
                 );
 
-                datapass_sender.send((data, state)).unwrap();
+                datapass_sender.send_async((data, state)).await.unwrap();
             }
         });
         self.send_comm_map.insert(id, send_comm);
@@ -542,7 +542,7 @@ impl Net for BaguaNet {
             }
         });
 
-        let (msg_sender, mut msg_receiver) = flume::unbounded();
+        let (msg_sender, msg_receiver) = flume::unbounded();
         let id = self.recv_comm_next_id;
         self.recv_comm_next_id += 1;
         let recv_comm = SocketRecvComm {
@@ -572,7 +572,8 @@ impl Net for BaguaNet {
                 );
 
                 datapass_sender
-                    .send((&mut data[..target_nbytes], state))
+                    .send_async((&mut data[..target_nbytes], state))
+                    .await
                     .unwrap();
             }
         });
