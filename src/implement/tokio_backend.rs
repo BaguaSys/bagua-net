@@ -97,6 +97,7 @@ pub struct BaguaNet {
     nstreams: usize,
     min_chunksize: usize,
     tokio_rt: tokio::runtime::Runtime,
+    test_count: usize,
 }
 
 impl BaguaNet {
@@ -266,6 +267,7 @@ impl BaguaNet {
                 .parse()
                 .unwrap(),
             tokio_rt: tokio_rt,
+            test_count: 0,
         })
     }
 }
@@ -664,6 +666,11 @@ impl interface::Net for BaguaNet {
     }
 
     fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
+        self.test_count += 1;
+        if self.test_count % 10000 == 0 {
+            println!("hold_request={}", socket_request_map.len());
+        }
+
         *self.state.request_count.lock().unwrap() = self.socket_request_map.len();
         let request = self.socket_request_map.get_mut(&request_id).unwrap();
         let ret = match request {
