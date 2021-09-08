@@ -1,5 +1,3 @@
-#[cfg(feature = "async")]
-
 use crate::interface;
 use crate::interface::{
     BaguaNetError, NCCLNetProperties, Net, SocketHandle, SocketListenCommID, SocketRecvCommID,
