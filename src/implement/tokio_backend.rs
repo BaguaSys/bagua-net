@@ -581,7 +581,7 @@ impl interface::Net for BaguaNet {
                 };
 
                 log_count += 1;
-                if log_count % 100000 == 0 {
+                if log_count % 1000 == 0 {
                     println!(
                         "local={}, peer={}",
                         ctrl_stream.local_addr().unwrap(),
