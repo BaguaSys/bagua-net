@@ -6,7 +6,7 @@ edition = "2018"
 license = "MIT License Copyright (c) 2021 Kuaishou AI Platform & DS3 Lab"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["staticlib"]
 
 [dependencies]
 nix = "0.22.1"

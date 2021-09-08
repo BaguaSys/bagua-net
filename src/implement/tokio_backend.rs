@@ -91,13 +91,11 @@ pub struct BaguaNet {
     pub socket_request_next_id: usize,
     pub socket_request_map: HashMap<SocketRequestID, SocketRequest>,
     pub trace_span_context: opentelemetry::Context,
-    pub trace_on_flag: bool,
     pub rank: i32,
     state: Arc<AppState>,
     nstreams: usize,
     min_chunksize: usize,
     tokio_rt: tokio::runtime::Runtime,
-    test_count: usize,
 }
 
 impl BaguaNet {
@@ -256,18 +254,16 @@ impl BaguaNet {
             socket_request_map: Default::default(),
             trace_span_context: opentelemetry::Context::current_with_span(span),
             rank: rank,
-            trace_on_flag: rank < 8,
             state: state,
             nstreams: std::env::var("BAGUA_NET_NSTREAMS")
                 .unwrap_or("2".to_owned())
                 .parse()
                 .unwrap(),
             min_chunksize: std::env::var("BAGUA_NET_MIN_CHUNKSIZE")
-                .unwrap_or("131072".to_owned())
+                .unwrap_or("65535".to_owned())
                 .parse()
                 .unwrap(),
             tokio_rt: tokio_rt,
-            test_count: 0,
         })
     }
 }
