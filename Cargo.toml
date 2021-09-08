@@ -16,7 +16,7 @@ thiserror = "1"
 bytes = "1.1"
 libc = "0.2"
 ffi-convert = "0.5"
-flume = "0.10"
+flume = { version = "0.10", features = ["async"] }
 socket2 = "0.4"
 opentelemetry = { version = "0.16", features = [
     "trace",

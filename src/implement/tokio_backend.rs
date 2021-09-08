@@ -1,3 +1,5 @@
+#[cfg(feature = "async")]
+
 use crate::interface;
 use crate::interface::{
     BaguaNetError, NCCLNetProperties, Net, SocketHandle, SocketListenCommID, SocketRecvCommID,
@@ -17,7 +19,6 @@ use std::io::{Read, Write};
 use std::net;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::mpsc;
 
 const NCCL_PTR_HOST: i32 = 1;
 const NCCL_PTR_CUDA: i32 = 2;
@@ -33,12 +34,12 @@ pub struct SocketListenComm {
 // TODO: make Rotating communicator
 #[derive(Clone)]
 pub struct SocketSendComm {
-    pub msg_sender: mpsc::UnboundedSender<(&'static [u8], Arc<Mutex<RequestState>>)>,
+    pub msg_sender: flume::Sender<(&'static [u8], Arc<Mutex<RequestState>>)>,
 }
 
 #[derive(Clone)]
 pub struct SocketRecvComm {
-    pub msg_sender: mpsc::UnboundedSender<(&'static mut [u8], Arc<Mutex<RequestState>>)>,
+    pub msg_sender: flume::Sender<(&'static mut [u8], Arc<Mutex<RequestState>>)>,
 }
 
 pub struct SocketSendRequest {
@@ -260,7 +261,7 @@ impl BaguaNet {
     }
 }
 
-impl interface::Net for BaguaNet {
+impl Net for BaguaNet {
     fn devices(&self) -> Result<usize, BaguaNetError> {
         Ok(self.socket_devs.len())
     }
@@ -360,7 +361,7 @@ impl interface::Net for BaguaNet {
         // Launch async datapass pipeline
         let min_chunksize = self.min_chunksize;
         let (datapass_sender, mut datapass_receiver) =
-            mpsc::unbounded_channel::<(&'static [u8], Arc<Mutex<RequestState>>)>();
+            flume::unbounded::<(&'static [u8], Arc<Mutex<RequestState>>)>();
         self.tokio_rt.spawn(async move {
             let mut stream_vec: Vec<tokio::net::TcpStream> = stream_vec
                 .into_iter()
@@ -372,9 +373,9 @@ impl interface::Net for BaguaNet {
             let nstreams = stream_vec.len();
 
             loop {
-                let (data, state) = match datapass_receiver.recv().await {
-                    Some(it) => it,
-                    None => break,
+                let (data, state) = match datapass_receiver.recv_async().await {
+                    Ok(it) => it,
+                    Err(_) => break,
                 };
                 if data.len() == 0 {
                     state.lock().unwrap().completed_subtasks += 1;
@@ -430,7 +431,7 @@ impl interface::Net for BaguaNet {
             ctrl_stream.peer_addr()
         );
 
-        let (msg_sender, mut msg_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (msg_sender, mut msg_receiver) = flume::unbounded();
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
         let send_comm = SocketSendComm {
@@ -440,9 +441,9 @@ impl interface::Net for BaguaNet {
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             ctrl_stream.set_nodelay(true).unwrap();
             loop {
-                let (data, state) = match msg_receiver.recv().await {
-                    Some(it) => it,
-                    None => break,
+                let (data, state) = match msg_receiver.recv_async().await {
+                    Ok(it) => it,
+                    Err(_err) => break,
                 };
 
                 match ctrl_stream.write_u32(data.len() as u32).await {
@@ -497,7 +498,7 @@ impl interface::Net for BaguaNet {
 
         let min_chunksize = self.min_chunksize;
         let (datapass_sender, mut datapass_receiver) =
-            mpsc::unbounded_channel::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
+            flume::unbounded::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
         self.tokio_rt.spawn(async move {
             let mut stream_vec: Vec<tokio::net::TcpStream> = stream_vec
                 .into_iter()
@@ -509,9 +510,9 @@ impl interface::Net for BaguaNet {
             let nstreams = stream_vec.len();
 
             loop {
-                let (data, state) = match datapass_receiver.recv().await {
-                    Some(it) => it,
-                    None => break,
+                let (data, state) = match datapass_receiver.recv_async().await {
+                    Ok(it) => it,
+                    Err(_err) => break,
                 };
                 if data.len() == 0 {
                     state.lock().unwrap().completed_subtasks += 1;
@@ -543,7 +544,7 @@ impl interface::Net for BaguaNet {
             }
         });
 
-        let (msg_sender, mut msg_receiver) = mpsc::unbounded_channel();
+        let (msg_sender, mut msg_receiver) = flume::unbounded();
         let id = self.recv_comm_next_id;
         self.recv_comm_next_id += 1;
         let recv_comm = SocketRecvComm {
@@ -553,9 +554,9 @@ impl interface::Net for BaguaNet {
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             ctrl_stream.set_nodelay(true).unwrap();
             loop {
-                let (data, state) = match msg_receiver.recv().await {
-                    Some(it) => it,
-                    None => break,
+                let (data, state) = match msg_receiver.recv_async().await {
+                    Ok(it) => it,
+                    Err(_err) => break,
                 };
 
                 let target_nbytes = match ctrl_stream.read_u32().await {
