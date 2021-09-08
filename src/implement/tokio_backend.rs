@@ -564,7 +564,6 @@ impl interface::Net for BaguaNet {
         self.tokio_rt.spawn(async move {
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             ctrl_stream.set_nodelay(true).unwrap();
-            let mut log_count = 0;
             loop {
                 let (data, state) = match msg_receiver.recv().await {
                     Some(it) => it,
@@ -579,15 +578,6 @@ impl interface::Net for BaguaNet {
                         break;
                     }
                 };
-
-                // log_count += 1;
-                // if log_count % 1000 == 0 {
-                //     println!(
-                //         "local={}, peer={}",
-                //         ctrl_stream.local_addr().unwrap(),
-                //         ctrl_stream.peer_addr().unwrap()
-                //     );
-                // }
 
                 tracing::debug!(
                     "{:?} recv target_nbytes={}",
@@ -677,32 +667,6 @@ impl interface::Net for BaguaNet {
     }
 
     fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
-        // self.test_count += 1;
-        // if self.test_count % 10000000 == 0 {
-        //     let send_request_count = self
-        //         .socket_request_map
-        //         .iter()
-        //         .filter(|(_, x)| match x {
-        //             SocketRequest::SendRequest(_) => true,
-        //             _ => false,
-        //         })
-        //         .count();
-        //     let recv_request_count = self
-        //         .socket_request_map
-        //         .iter()
-        //         .filter(|(_, x)| match x {
-        //             SocketRequest::RecvRequest(_) => true,
-        //             _ => false,
-        //         })
-        //         .count();
-        //     println!(
-        //         "hold_request={}, send={}, recv={}",
-        //         self.socket_request_map.len(),
-        //         send_request_count,
-        //         recv_request_count
-        //     );
-        // }
-
         *self.state.request_count.lock().unwrap() = self.socket_request_map.len();
         let request = self.socket_request_map.get_mut(&request_id).unwrap();
         let ret = match request {
