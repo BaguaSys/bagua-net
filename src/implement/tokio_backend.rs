@@ -667,8 +667,29 @@ impl interface::Net for BaguaNet {
 
     fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
         self.test_count += 1;
+        let send_request_count = self
+            .socket_request_map
+            .iter()
+            .filter(|(_, x)| match x {
+                SocketRequest::SendRequest(_) => true,
+                _ => false,
+            })
+            .count();
+        let recv_request_count = self
+            .socket_request_map
+            .iter()
+            .filter(|(_, x)| match x {
+                SocketRequest::RecvRequest(_) => true,
+                _ => false,
+            })
+            .count();
         if self.test_count % 10000 == 0 {
-            println!("hold_request={}", self.socket_request_map.len());
+            println!(
+                "hold_request={}, send={}, recv={}",
+                self.socket_request_map.len(),
+                send_request_count,
+                recv_request_count
+            );
         }
 
         *self.state.request_count.lock().unwrap() = self.socket_request_map.len();
