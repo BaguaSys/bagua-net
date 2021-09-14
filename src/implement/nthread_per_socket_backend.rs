@@ -413,13 +413,15 @@ impl Net for BaguaNet {
                                     utils::nonblocking_write_all(&mut ctrl_stream, &data[..])
                                         .unwrap();
                                 }
-                            }
+                            } else {
+                                let target_nbytes = data.len().to_be_bytes();
 
-                            let target_nbytes = data.len().to_be_bytes();
-                            buf.put(&target_nbytes[..]);
-                            buf.put(&data[..]);
-                            states.push(state);
+                                buf.put(&target_nbytes[..]);
+                                buf.put(&data[..]);
+                                states.push(state);
+                            }
                         }
+                        println!("buf.len={}, wait_count={}", buf.len(), wait_count);
                         if buf.len() >= min_chunksize || wait_count >= 10 {
                             wait_count = 0;
                             utils::nonblocking_write_all(&mut ctrl_stream, &buf[..]).unwrap();
