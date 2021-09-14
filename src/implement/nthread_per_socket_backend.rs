@@ -447,7 +447,7 @@ impl Net for BaguaNet {
                             break;
                         }
 
-                        // std::thread::yield_now();
+                        std::thread::yield_now();
                     }
 
                     // for (data, state) in msg_receiver.iter() {
