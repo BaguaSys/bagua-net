@@ -397,7 +397,7 @@ impl Net for BaguaNet {
                                 Err(_) => break,
                             };
 
-                            if data.len() >= 0 {
+                            if data.len() >= min_chunksize {
                                 let target_nbytes = data.len().to_be_bytes();
                                 if let Err(err) = utils::nonblocking_write_all(
                                     &mut ctrl_stream,
@@ -421,27 +421,27 @@ impl Net for BaguaNet {
                                 states.push(state);
                             }
                         }
-                        // if buf.len() >= min_chunksize || wait_count >= 10 {
-                        //     if buf.len() == 0 {
-                        //         std::thread::yield_now();
-                        //     } else {
-                        //         wait_count = 0;
-                        //         utils::nonblocking_write_all(&mut ctrl_stream, &buf[..]).unwrap();
-                        //         for state in states.iter_mut() {
-                        //             match state.lock() {
-                        //                 Ok(mut state) => {
-                        //                     state.completed_subtasks += 1;
-                        //                 }
-                        //                 Err(poisoned) => {
-                        //                     tracing::warn!("{:?}", poisoned);
-                        //                 }
-                        //             };
-                        //         }
-                        //         states.clear();
-                        //         buf.clear();
-                        //     }
-                        // }
-                        // wait_count += 1;
+                        if buf.len() >= min_chunksize || wait_count >= 10 {
+                            if buf.len() == 0 {
+                                std::thread::yield_now();
+                            } else {
+                                wait_count = 0;
+                                utils::nonblocking_write_all(&mut ctrl_stream, &buf[..]).unwrap();
+                                for state in states.iter_mut() {
+                                    match state.lock() {
+                                        Ok(mut state) => {
+                                            state.completed_subtasks += 1;
+                                        }
+                                        Err(poisoned) => {
+                                            tracing::warn!("{:?}", poisoned);
+                                        }
+                                    };
+                                }
+                                states.clear();
+                                buf.clear();
+                            }
+                        }
+                        wait_count += 1;
 
                         if msg_receiver.is_disconnected() && buf.len() == 0 {
                             println!("exit!!");
