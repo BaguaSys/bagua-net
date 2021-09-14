@@ -407,9 +407,8 @@ impl Net for BaguaNet {
                                         Some(BaguaNetError::IOError(format!("{:?}", err)));
                                     break;
                                 }
-                                let target_nbytes = usize::from_be_bytes(target_nbytes);
 
-                                if target_nbytes != 0 {
+                                if data.len() != 0 {
                                     utils::nonblocking_write_all(&mut ctrl_stream, &data[..])
                                         .unwrap();
                                 }
@@ -444,6 +443,7 @@ impl Net for BaguaNet {
                         wait_count += 1;
 
                         if msg_receiver.is_disconnected() && buf.len() == 0 {
+                            println!("exit!!");
                             break;
                         }
 
