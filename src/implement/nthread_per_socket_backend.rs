@@ -388,97 +388,76 @@ impl Net for BaguaNet {
                 msg_sender: msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
                     let mut downstream_id = 0;
-                    // let mut buf = BytesMut::new();
-                    // let mut states = Vec::new();
-                    // let mut wait_count = 0;
-                    // loop {
-                    //     loop {
-                    //         let (data, state) = match msg_receiver.try_recv() {
-                    //             Ok(ok) => ok,
-                    //             Err(e) => break,
-                    //         };
+                    let mut buf = BytesMut::new();
+                    let mut states = Vec::new();
+                    let mut wait_count = 0;
+                    loop {
+                        loop {
+                            let (data, state) = match msg_receiver.try_recv() {
+                                Ok(ok) => ok,
+                                Err(_) => break,
+                            };
 
-                    //         if data.len() >= min_chunksize {
-                    //             let mut target_nbytes = data.len().to_be_bytes();
-                    //             if let Err(err) =
-                    //                 utils::nonblocking_write_all(&mut ctrl_stream, &target_nbytes[..])
-                    //             {
-                    //                 state.lock().unwrap().err =
-                    //                     Some(BaguaNetError::IOError(format!("{:?}", err)));
-                    //                 break;
-                    //             }
-                    //             let target_nbytes = usize::from_be_bytes(target_nbytes);
+                            if data.len() >= min_chunksize {
+                                let target_nbytes = data.len().to_be_bytes();
+                                if let Err(err) =
+                                    utils::nonblocking_write_all(&mut ctrl_stream, &target_nbytes[..])
+                                {
+                                    state.lock().unwrap().err =
+                                        Some(BaguaNetError::IOError(format!("{:?}", err)));
+                                    break;
+                                }
+                                let target_nbytes = usize::from_be_bytes(target_nbytes);
 
-                    //             let mut counter = Arc::new(Mutex::new(0 as usize));
-                    //             if target_nbytes != 0 {
-                    //                 let chunk_size =
-                    //                     utils::chunk_size(target_nbytes, min_chunksize, nstreams);
-                    //                 let chunk_count = data[..target_nbytes].chunks(chunk_size).count();
-                    //                 *counter.lock().unwrap() += chunk_count;
-                    //                 let counter_clone = counter.clone();
-                    //                 for bucket in data[..target_nbytes].chunks_mut(chunk_size) {
-                    //                     state.lock().unwrap().nsubtasks += 1;
-                    //                     streams_input[downstream_id]
-                    //                         .send((&mut bucket[..], move || {
-                    //                             match counter_clone.lock() {
-                    //                                 Ok(mut counter) => {
-                    //                                     *counter -= 1;
-                    //                                     if *counter == 0 {
-                    //                                         state.lock().unwrap().completed_subtasks += 1;
-                    //                                     }
-                    //                                 }
-                    //                                 Err(poisoned) => {
-                    //                                     tracing::warn!("{:?}", poisoned);
-                    //                                 }
-                    //                             };
-                    //                         }))
-                    //                         .unwrap();
-                    //                     downstream_id = (downstream_id + 1) % parallel_streams.len();
-                    //                 }
-                    //             }
-                    //         }
+                                if target_nbytes != 0 {
+                                    utils::nonblocking_write_all(&mut ctrl_stream, &data[..]).unwrap();
+                                }
+                            }
 
-                    //         let mut target_nbytes = data.len().to_be_bytes();
-                    //         buf.put(&target_nbytes[..]);
-                    //         buf.put(&data[..]);
-                    //         states.push(state);
-                    //     }
-                    //     if buf.len() >= min_chunksize || wait_count == 10 {
-                    //         wait_count = 0;
-                    //         utils::nonblocking_write_all(&mut ctrl_stream, &buf[..]).unwrap();
-                    //     }
+                            let target_nbytes = data.len().to_be_bytes();
+                            buf.put(&target_nbytes[..]);
+                            buf.put(&data[..]);
+                            states.push(state);
+                        }
+                        if buf.len() >= min_chunksize || wait_count == 10 {
+                            wait_count = 0;
+                            utils::nonblocking_write_all(&mut ctrl_stream, &buf[..]).unwrap();
+                        }
+                        wait_count += 1;
 
-                    //     if msg_receiver.is_disconnected() && buf.len() == 0 {
-                    //         break;
-                    //     }
-                    // }
-
-                    for (data, state) in msg_receiver.iter() {
-                        let send_nbytes = data.len().to_be_bytes();
-                        if let Err(err) =
-                            utils::nonblocking_write_all(&mut ctrl_stream, &send_nbytes[..])
-                        {
-                            state.lock().unwrap().err =
-                                Some(BaguaNetError::IOError(format!("{:?}", err)));
+                        if msg_receiver.is_disconnected() && buf.len() == 0 {
                             break;
                         }
 
-
-                        if data.len() != 0 {
-                            utils::nonblocking_write_all(&mut ctrl_stream, &data[..]).unwrap();
-                            // let chunk_size = utils::chunk_size(data.len(), min_chunksize, nstreams);
-
-                            // for bucket in data.chunks(chunk_size) {
-                            //     state.lock().unwrap().nsubtasks += 1;
-                            //     streams_input[downstream_id]
-                            //         .send((bucket, state.clone()))
-                            //         .unwrap();
-                            //     downstream_id = (downstream_id + 1) % parallel_streams.len();
-                            // }
-                        }
-
-                        state.lock().unwrap().completed_subtasks += 1;
+                        // std::thread::yield_now();
                     }
+
+                    // for (data, state) in msg_receiver.iter() {
+                    //     let send_nbytes = data.len().to_be_bytes();
+                    //     if let Err(err) =
+                    //         utils::nonblocking_write_all(&mut ctrl_stream, &send_nbytes[..])
+                    //     {
+                    //         state.lock().unwrap().err =
+                    //             Some(BaguaNetError::IOError(format!("{:?}", err)));
+                    //         break;
+                    //     }
+
+
+                    //     if data.len() != 0 {
+                    //         utils::nonblocking_write_all(&mut ctrl_stream, &data[..]).unwrap();
+                    //         // let chunk_size = utils::chunk_size(data.len(), min_chunksize, nstreams);
+
+                    //         // for bucket in data.chunks(chunk_size) {
+                    //         //     state.lock().unwrap().nsubtasks += 1;
+                    //         //     streams_input[downstream_id]
+                    //         //         .send((bucket, state.clone()))
+                    //         //         .unwrap();
+                    //         //     downstream_id = (downstream_id + 1) % parallel_streams.len();
+                    //         // }
+                    //     }
+
+                    //     state.lock().unwrap().completed_subtasks += 1;
+                    // }
                 })),
             },
         );
