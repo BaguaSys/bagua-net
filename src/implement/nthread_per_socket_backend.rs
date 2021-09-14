@@ -94,6 +94,7 @@ pub struct BaguaNet {
     state: Arc<AppState>,
     nstreams: usize,
     min_chunksize: usize,
+    log_count: usize,
 }
 
 impl BaguaNet {
@@ -233,6 +234,7 @@ impl BaguaNet {
                 .unwrap_or("1048576".to_owned())
                 .parse()
                 .unwrap(),
+                log_count: 0,
         })
     }
 }
@@ -593,6 +595,32 @@ impl Net for BaguaNet {
     }
 
     fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
+        self.log_count += 1;
+        if self.log_count % 10000 == 0 {
+            let send_count = self
+                .socket_request_map
+                .iter()
+                .filter(|(_, x)| match x {
+                    SocketRequest::SendRequest(_) => true,
+                    _ => false,
+                })
+                .count();
+            let recv_count = self
+                .socket_request_map
+                .iter()
+                .filter(|(_, x)| match x {
+                    SocketRequest::RecvRequest(_) => true,
+                    _ => false,
+                })
+                .count();
+            println!(
+                "request_count={}, send_count={}, recv_count={}",
+                self.socket_request_map.len(),
+                send_count,
+                recv_count
+            );
+        }
+
         let request = self.socket_request_map.get_mut(&request_id).unwrap();
         let ret = match request {
             SocketRequest::SendRequest(send_req) => {
