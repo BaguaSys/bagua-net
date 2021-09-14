@@ -444,7 +444,6 @@ impl Net for BaguaNet {
                         wait_count += 1;
 
                         if msg_receiver.is_disconnected() && buf.len() == 0 {
-                            println!("exit!!");
                             break;
                         }
 
