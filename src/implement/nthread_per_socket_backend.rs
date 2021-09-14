@@ -412,6 +412,7 @@ impl Net for BaguaNet {
                                     utils::nonblocking_write_all(&mut ctrl_stream, &data[..])
                                         .unwrap();
                                 }
+                                state.lock().unwrap().completed_subtasks += 1;
                             } else {
                                 let target_nbytes = data.len().to_be_bytes();
 
