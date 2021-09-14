@@ -422,20 +422,24 @@ impl Net for BaguaNet {
                             }
                         }
                         if buf.len() >= min_chunksize || wait_count >= 10 {
-                            wait_count = 0;
-                            utils::nonblocking_write_all(&mut ctrl_stream, &buf[..]).unwrap();
-                            for state in states.iter_mut() {
-                                match state.lock() {
-                                    Ok(mut state) => {
-                                        state.completed_subtasks += 1;
-                                    }
-                                    Err(poisoned) => {
-                                        tracing::warn!("{:?}", poisoned);
-                                    }
-                                };
+                            if buf.len() == 0 {
+                                std::thread::yield_now();
+                            } else {
+                                wait_count = 0;
+                                utils::nonblocking_write_all(&mut ctrl_stream, &buf[..]).unwrap();
+                                for state in states.iter_mut() {
+                                    match state.lock() {
+                                        Ok(mut state) => {
+                                            state.completed_subtasks += 1;
+                                        }
+                                        Err(poisoned) => {
+                                            tracing::warn!("{:?}", poisoned);
+                                        }
+                                    };
+                                }
+                                states.clear();
+                                buf.clear();
                             }
-                            states.clear();
-                            buf.clear();
                         }
                         wait_count += 1;
 
