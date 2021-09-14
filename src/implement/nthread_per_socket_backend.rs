@@ -335,7 +335,7 @@ impl Net for BaguaNet {
             stream.set_nonblocking(true).unwrap();
 
             let (msg_sender, msg_receiver) =
-                flume::unbounded::<(&'static mut [u8], impl Fn())>();
+                flume::unbounded::<(&'static mut [u8], fn())>();
             let metrics = self.state.clone();
             // TODO: Consider dynamically assigning tasks to make the least stream full
             parallel_streams.push(std::thread::spawn(move || {
