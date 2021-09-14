@@ -660,39 +660,39 @@ impl Net for BaguaNet {
     }
 
     fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
-        self.log_count += 1;
-        if self.log_count % 100000 == 0 {
-            let send_work: Vec<usize> = self
-                .socket_request_map
-                .iter()
-                .filter(|(_, x)| match x {
-                    SocketRequest::SendRequest(_) => true,
-                    _ => false,
-                })
-                .map(|(_, x)| match x {
-                    SocketRequest::SendRequest(x) => x.comm_id.clone(),
-                    SocketRequest::RecvRequest(x) => x.comm_id.clone(),
-                })
-                .collect();
-            let recv_work: Vec<usize> = self
-                .socket_request_map
-                .iter()
-                .filter(|(_, x)| match x {
-                    SocketRequest::RecvRequest(_) => true,
-                    _ => false,
-                })
-                .map(|(_, x)| match x {
-                    SocketRequest::SendRequest(x) => x.comm_id.clone(),
-                    SocketRequest::RecvRequest(x) => x.comm_id.clone(),
-                })
-                .collect();
-            println!(
-                "request_count={}, send_count={:?}, recv_count={:?}",
-                self.socket_request_map.len(),
-                send_work,
-                recv_work
-            );
-        }
+        // self.log_count += 1;
+        // if self.log_count % 100000 == 0 {
+        //     let send_work: Vec<usize> = self
+        //         .socket_request_map
+        //         .iter()
+        //         .filter(|(_, x)| match x {
+        //             SocketRequest::SendRequest(_) => true,
+        //             _ => false,
+        //         })
+        //         .map(|(_, x)| match x {
+        //             SocketRequest::SendRequest(x) => x.comm_id.clone(),
+        //             SocketRequest::RecvRequest(x) => x.comm_id.clone(),
+        //         })
+        //         .collect();
+        //     let recv_work: Vec<usize> = self
+        //         .socket_request_map
+        //         .iter()
+        //         .filter(|(_, x)| match x {
+        //             SocketRequest::RecvRequest(_) => true,
+        //             _ => false,
+        //         })
+        //         .map(|(_, x)| match x {
+        //             SocketRequest::SendRequest(x) => x.comm_id.clone(),
+        //             SocketRequest::RecvRequest(x) => x.comm_id.clone(),
+        //         })
+        //         .collect();
+        //     println!(
+        //         "request_count={}, send_count={:?}, recv_count={:?}",
+        //         self.socket_request_map.len(),
+        //         send_work,
+        //         recv_work
+        //     );
+        // }
 
         let request = self.socket_request_map.get_mut(&request_id).unwrap();
         let ret = match request {
