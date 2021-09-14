@@ -421,7 +421,6 @@ impl Net for BaguaNet {
                                 states.push(state);
                             }
                         }
-                        println!("buf.len={}, wait_count={}", buf.len(), wait_count);
                         if buf.len() >= min_chunksize || wait_count >= 10 {
                             wait_count = 0;
                             utils::nonblocking_write_all(&mut ctrl_stream, &buf[..]).unwrap();
