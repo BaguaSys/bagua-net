@@ -5,6 +5,7 @@ use crate::interface::{
 };
 use crate::utils;
 use crate::utils::NCCLSocketDev;
+use bytes::{BufMut, BytesMut};
 use nix::sys::socket::{InetAddr, SockAddr};
 use opentelemetry::{
     metrics::{BoundValueRecorder, ObserverResult},
@@ -16,7 +17,6 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net;
 use std::sync::{Arc, Mutex};
-use bytes::{BytesMut, BufMut};
 
 const NCCL_PTR_HOST: i32 = 1;
 const NCCL_PTR_CUDA: i32 = 2;
@@ -334,8 +334,7 @@ impl Net for BaguaNet {
             stream.set_nodelay(true).unwrap();
             stream.set_nonblocking(true).unwrap();
 
-            let (msg_sender, msg_receiver) =
-                flume::unbounded::<(&'static mut [u8], fn())>();
+            let (msg_sender, msg_receiver) = flume::unbounded::<(&'static mut [u8], fn())>();
             let metrics = self.state.clone();
             // TODO: Consider dynamically assigning tasks to make the least stream full
             parallel_streams.push(std::thread::spawn(move || {
@@ -400,9 +399,10 @@ impl Net for BaguaNet {
 
                             if data.len() >= min_chunksize {
                                 let target_nbytes = data.len().to_be_bytes();
-                                if let Err(err) =
-                                    utils::nonblocking_write_all(&mut ctrl_stream, &target_nbytes[..])
-                                {
+                                if let Err(err) = utils::nonblocking_write_all(
+                                    &mut ctrl_stream,
+                                    &target_nbytes[..],
+                                ) {
                                     state.lock().unwrap().err =
                                         Some(BaguaNetError::IOError(format!("{:?}", err)));
                                     break;
@@ -410,7 +410,8 @@ impl Net for BaguaNet {
                                 let target_nbytes = usize::from_be_bytes(target_nbytes);
 
                                 if target_nbytes != 0 {
-                                    utils::nonblocking_write_all(&mut ctrl_stream, &data[..]).unwrap();
+                                    utils::nonblocking_write_all(&mut ctrl_stream, &data[..])
+                                        .unwrap();
                                 }
                             }
 
@@ -422,6 +423,16 @@ impl Net for BaguaNet {
                         if buf.len() >= min_chunksize || wait_count == 10 {
                             wait_count = 0;
                             utils::nonblocking_write_all(&mut ctrl_stream, &buf[..]).unwrap();
+                            for state in states.iter_mut() {
+                                match state.lock() {
+                                    Ok(mut state) => {
+                                        state.completed_subtasks += 1;
+                                    }
+                                    Err(poisoned) => {
+                                        tracing::warn!("{:?}", poisoned);
+                                    }
+                                };
+                            }
                         }
                         wait_count += 1;
 
@@ -441,7 +452,6 @@ impl Net for BaguaNet {
                     //             Some(BaguaNetError::IOError(format!("{:?}", err)));
                     //         break;
                     //     }
-
 
                     //     if data.len() != 0 {
                     //         utils::nonblocking_write_all(&mut ctrl_stream, &data[..]).unwrap();
@@ -545,7 +555,11 @@ impl Net for BaguaNet {
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
                         if target_nbytes != 0 {
-                            utils::nonblocking_read_exact(&mut ctrl_stream, &mut data[..target_nbytes]).unwrap();
+                            utils::nonblocking_read_exact(
+                                &mut ctrl_stream,
+                                &mut data[..target_nbytes],
+                            )
+                            .unwrap();
                             // let chunk_size =
                             //     utils::chunk_size(target_nbytes, min_chunksize, nstreams);
                             // for bucket in data[..target_nbytes].chunks_mut(chunk_size) {
@@ -556,7 +570,16 @@ impl Net for BaguaNet {
                             //     downstream_id = (downstream_id + 1) % parallel_streams.len();
                             // }
                         }
-                        state.lock().unwrap().completed_subtasks += 1;
+
+                        match state.lock() {
+                            Ok(mut state) => {
+                                state.completed_subtasks += 1;
+                                state.nbytes_transferred += target_nbytes;
+                            }
+                            Err(poisoned) => {
+                                tracing::warn!("{:?}", poisoned);
+                            }
+                        };
                     }
                 })),
             },
