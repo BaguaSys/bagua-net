@@ -566,7 +566,7 @@ impl Net for BaguaNet {
                         let target_nbytes = usize::from_be_bytes(target_nbytes);
 
                         if target_nbytes != 0 {
-                            utils::nonblocking_read_exact(&mut ctrl_stream, &mut data[..]).unwrap();
+                            utils::nonblocking_read_exact(&mut ctrl_stream, &mut data[..target_nbytes]).unwrap();
                             // let chunk_size =
                             //     utils::chunk_size(target_nbytes, min_chunksize, nstreams);
                             // for bucket in data[..target_nbytes].chunks_mut(chunk_size) {
