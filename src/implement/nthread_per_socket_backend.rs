@@ -44,11 +44,13 @@ pub struct SocketRecvComm {
 pub struct SocketSendRequest {
     pub state: Arc<Mutex<RequestState>>,
     pub trace_span: opentelemetry::global::BoxedSpan,
+    pub comm_id: usize,
 }
 
 pub struct SocketRecvRequest {
     pub state: Arc<Mutex<RequestState>>,
     pub trace_span: opentelemetry::global::BoxedSpan,
+    pub comm_id: usize,
 }
 
 #[derive(Debug)]
@@ -234,7 +236,7 @@ impl BaguaNet {
                 .unwrap_or("1048576".to_owned())
                 .parse()
                 .unwrap(),
-                log_count: 0,
+            log_count: 0,
         })
     }
 }
@@ -551,6 +553,7 @@ impl Net for BaguaNet {
             SocketRequest::SendRequest(SocketSendRequest {
                 state: task_state.clone(),
                 trace_span: span,
+                comm_id: send_comm_id,
             }),
         );
 
@@ -586,6 +589,7 @@ impl Net for BaguaNet {
             SocketRequest::RecvRequest(SocketRecvRequest {
                 state: task_state.clone(),
                 trace_span: span,
+                comm_id: recv_comm_id,
             }),
         );
 
@@ -596,28 +600,36 @@ impl Net for BaguaNet {
 
     fn test(&mut self, request_id: SocketRequestID) -> Result<(bool, usize), BaguaNetError> {
         self.log_count += 1;
-        if self.log_count % 10000 == 0 {
-            let send_count = self
+        if self.log_count % 100000 == 0 {
+            let send_work: Vec<usize> = self
                 .socket_request_map
                 .iter()
                 .filter(|(_, x)| match x {
                     SocketRequest::SendRequest(_) => true,
                     _ => false,
                 })
-                .count();
-            let recv_count = self
+                .map(|(_, x)| match x {
+                    SocketRequest::SendRequest(x) => x.comm_id.clone(),
+                    SocketRequest::RecvRequest(x) => x.comm_id.clone(),
+                })
+                .collect();
+            let recv_work: Vec<usize> = self
                 .socket_request_map
                 .iter()
                 .filter(|(_, x)| match x {
                     SocketRequest::RecvRequest(_) => true,
                     _ => false,
                 })
-                .count();
+                .map(|(_, x)| match x {
+                    SocketRequest::SendRequest(x) => x.comm_id.clone(),
+                    SocketRequest::RecvRequest(x) => x.comm_id.clone(),
+                })
+                .collect();
             println!(
-                "request_count={}, send_count={}, recv_count={}",
+                "request_count={}, send_count={:?}, recv_count={:?}",
                 self.socket_request_map.len(),
-                send_count,
-                recv_count
+                send_work,
+                recv_work
             );
         }
 
