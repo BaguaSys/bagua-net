@@ -397,7 +397,7 @@ impl Net for BaguaNet {
                                 Err(_) => break,
                             };
 
-                            if data.len() >= min_chunksize {
+                            if data.len() >= 0 {
                                 let target_nbytes = data.len().to_be_bytes();
                                 if let Err(err) = utils::nonblocking_write_all(
                                     &mut ctrl_stream,
