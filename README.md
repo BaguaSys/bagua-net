@@ -1,4 +1,4 @@
-Bagua-Net
+Bagua-Net has been merged into [Bagua](https://github.com/BaguaSys/bagua)!
 =====
 
 [![GitHub license](https://img.shields.io/github/license/BaguaSys/bagua-core)](https://github.com/BaguaSys/bagua-core/blob/master/LICENSE)
